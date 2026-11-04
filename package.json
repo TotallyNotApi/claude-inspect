@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node scripts/build.mjs",
     "test": "vitest run",
     "test:mod": "cd plugin && claude plugin test",
     "typecheck": "tsc --noEmit"
