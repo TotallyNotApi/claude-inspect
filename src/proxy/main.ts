@@ -13,6 +13,7 @@ import { parseArgs } from 'node:util'
 import type { LaunchInfo } from '../../plugin/hooks/lib/types.js'
 import { createApi, createWatchdog } from './api.js'
 import { createProxyServer } from './server.js'
+import { createSourceResolver } from './sourcemap.js'
 import { InstructionStore } from './store.js'
 
 const MAX_PORT_TRIES = 20
@@ -57,9 +58,7 @@ async function main(): Promise<void> {
     console.error('usage: proxy --target <port> [--port <port>] [--cwd <dir>] --ready-file <path>')
     process.exit(2)
   }
-  // Stored for the source resolver (Task 9).
   const cwd = values.cwd as string
-  void cwd
 
   const token = randomBytes(32).toString('hex')
   const store = new InstructionStore()
@@ -79,6 +78,7 @@ async function main(): Promise<void> {
     overlayJsPath,
     onShutdown: shutdown,
     onHeartbeat: () => watchdog.heartbeat(),
+    resolveSource: createSourceResolver({ target, cwd }),
   })
   server = createProxyServer({
     target,
