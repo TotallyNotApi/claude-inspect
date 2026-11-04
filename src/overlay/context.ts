@@ -118,7 +118,7 @@ export function buildElementContext(el: Element): Omit<ElementContext, 'componen
   const attrs: Record<string, string> = {}
   for (const name of ATTR_ALLOWLIST) {
     const v = el.getAttribute(name)
-    if (v !== null) attrs[name] = v
+    if (v !== null) attrs[name] = truncate(v, TEXT_MAX)
   }
   const ctx: Omit<ElementContext, 'components' | 'source'> = {
     text: truncate(elementText(el), TEXT_MAX),

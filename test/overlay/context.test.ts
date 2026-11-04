@@ -119,6 +119,23 @@ describe('buildElementContext', () => {
     expect(c.outerHTML.length).toBe(601)
     expect(c.outerHTML.endsWith('…')).toBe(true)
   })
+  it('truncates huge attribute values', () => {
+    document.body.innerHTML = `<img src="data:image/png;base64,${'A'.repeat(10000)}">`
+    const c = buildElementContext(document.querySelector('img')!)
+    expect(c.attrs.src!.length).toBeLessThanOrEqual(201)
+    expect(c.attrs.src!.endsWith('…')).toBe(true)
+  })
+  it('keeps exactly 200 chars of text without ellipsis', () => {
+    document.body.innerHTML = `<p>${'y'.repeat(200)}</p>`
+    expect(buildElementContext(document.querySelector('p')!).text).toBe('y'.repeat(200))
+  })
+  it('uses nth-child with mixed sibling tags', () => {
+    document.body.innerHTML = '<main><section><p>a</p><div>b</div><div class="x">c</div></section></main>'
+    const el = document.querySelector('div.x')!
+    const c = buildElementContext(el)
+    expect(c.domPath).toBe('main > section > div.x:nth-child(3)')
+    expect(document.querySelector(c.selector)).toBe(el)
+  })
   it('does not crash on html', () => {
     const c = buildElementContext(document.documentElement)
     expect(c.tag).toBe('html')
