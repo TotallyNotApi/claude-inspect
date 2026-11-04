@@ -86,6 +86,14 @@ function reportProgress($: any, kind: 'tool' | 'waiting-permission', label: stri
     .catch(() => {})
 }
 
+// Error handler for the progress hooks (docs: events.md "Handle a hook that fails"). A hook that failed
+// after next() resolved keeps that result: next(e) in the handler replays it without running anything
+// downstream again. One that failed before next() is skipped by Claude Code; calling next(e) here does the
+// same (fail open), since progress must never block a tool call or turn a decision into a denial.
+async function progressCatch($: any, e: any, next: any): Promise<any> {
+  // Same call for both cases: next.called true replays the recorded result, false fails open.
+  return next(e)
+}
 
 async function dispatch($: any, ev: QueueEvent): Promise<void> {
   const r = step(queue, ev)
@@ -240,7 +248,7 @@ export function register(on: any) {
       if (e.agentId === undefined) reportProgress($, 'tool', toolLabel(String(e.tool), e))
     } catch {}
     return next(e)
-  }).catch(($: any, e: any, next: any) => next(e))
+  }).catch(progressCatch)
 
   on('tool.check', async ($: any, e: any, next: any) => {
     const r = await next(e)
@@ -249,7 +257,7 @@ export function register(on: any) {
         reportProgress($, 'waiting-permission', 'Čeká na schválení v terminálu')
     } catch {}
     return r
-  }).catch(($: any, e: any, next: any) => next(e))
+  }).catch(progressCatch)
 
   // Real user input lifts a pause after Esc. Decided only from the kit-verified e.origin: a prompt
   // from any mod (this one's own $.prompt.submit skips this hook as re-entry anyway) arrives with
