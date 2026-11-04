@@ -36,11 +36,11 @@ describe('parseLaunchOutput', () => {
 describe('texts', () => {
   const info = { port: 4000, token: 't', pid: 1, target: 3000 }
   it('are verbatim', () => {
-    expect(startText(info)).toBe('web-inspect: otevři http://localhost:4000 (proxy pro localhost:3000). Výběr v prohlížeči: Alt+C.')
+    expect(startText(info)).toBe('otevři http://localhost:4000 (proxy pro localhost:3000). Výběr v prohlížeči: Alt+C.')
     expect(statusText(info)).toBe('aktivní: http://localhost:4000 → :3000')
     expect(statusText(null)).toBe('neaktivní. Použij /inspect <port dev serveru>')
-    expect(STOPPED_TEXT).toBe('web-inspect: vypnuto')
-    expect(INVALID_TEXT).toBe('web-inspect: zadej port dev serveru, např. /inspect 3000')
-    expect(startFailedText('x')).toBe('web-inspect: nepodařilo se spustit proxy (x). Potřebuješ Node 20+.')
+    expect(STOPPED_TEXT).toBe('vypnuto')
+    expect(INVALID_TEXT).toBe('zadej port dev serveru, např. /inspect 3000')
+    expect(startFailedText('x')).toBe('nepodařilo se spustit proxy (x). Potřebuješ Node 20+.')
   })
 })

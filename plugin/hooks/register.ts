@@ -99,7 +99,7 @@ export function register(on: any) {
   on('command.run', { command: 'inspect' }, async ($: any, e: any) => {
     const a = parseInspectArgs(e.args)
     if (a.kind === 'invalid') return { text: INVALID_TEXT }
-    if (a.kind === 'status') return { text: `web-inspect: ${statusText(active)}` }
+    if (a.kind === 'status') return { text: statusText(active) }
     if (a.kind === 'stop') {
       await stopProxy($)
       return { text: STOPPED_TEXT }
@@ -111,6 +111,10 @@ export function register(on: any) {
     if (active) {
       // Do not await: all session.end hooks share a 1.5 s budget.
       api($, 'shutdown', {}).catch(() => {})
+      // Forget the dead proxy so a resumed session does not restore it.
+      Promise.resolve()
+        .then(async () => $.store.delete(await storeKey($)))
+        .catch(() => {})
     }
     return next(e)
   })

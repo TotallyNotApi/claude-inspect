@@ -31,13 +31,13 @@ export function parseLaunchOutput(stdout: string, stderr = ''): LaunchResult {
   return { ok: false, reason: (stderr ?? '').trim() || 'neplatný výstup launcheru' }
 }
 
-export const STOPPED_TEXT = 'web-inspect: vypnuto'
-export const INVALID_TEXT = 'web-inspect: zadej port dev serveru, např. /inspect 3000'
+export const STOPPED_TEXT = 'vypnuto'
+export const INVALID_TEXT = 'zadej port dev serveru, např. /inspect 3000'
 
 export const startText = (i: LaunchInfo) =>
-  `web-inspect: otevři http://localhost:${i.port} (proxy pro localhost:${i.target}). Výběr v prohlížeči: Alt+C.`
+  `otevři http://localhost:${i.port} (proxy pro localhost:${i.target}). Výběr v prohlížeči: Alt+C.`
 export const statusText = (i: LaunchInfo | null) =>
   i ? `aktivní: http://localhost:${i.port} → :${i.target}` : 'neaktivní. Použij /inspect <port dev serveru>'
 export const startFailedText = (reason: string) =>
-  `web-inspect: nepodařilo se spustit proxy (${reason}). Potřebuješ Node 20+.`
+  `nepodařilo se spustit proxy (${reason}). Potřebuješ Node 20+.`
 export const statusLine = (i: LaunchInfo) => `inspect → :${i.port}`
