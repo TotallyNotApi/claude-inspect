@@ -1,5 +1,6 @@
 import type { ProgressEvent, QueueEntry, Snapshot } from '../../plugin/hooks/lib/types.ts'
 import type { Api } from './api.ts'
+import { PAUSED_LABEL } from '../../plugin/hooks/lib/queue.ts'
 
 export type Tone = 'live' | 'wait' | 'ok' | 'idle' | 'off'
 export type Summary = { text: string; tone: Tone }
@@ -22,19 +23,28 @@ const KIND_MARK: Record<ProgressEvent['kind'], string> = {
 }
 export const OFFLINE_TEXT = 'web-inspect: proxy neběží'
 export const CONTINUE_HINT = 'Pokračuj zprávou v terminálu'
+export const QUEUED_PAUSED_TEXT = 'Ve frontě – pokračuj zprávou v terminálu'
+const TERMINAL = new Set<ProgressEvent['kind']>(['turn-done', 'turn-aborted', 'info'])
+
+/** The mod is paused (after Esc, or holding a dropped submit) and waits for the user's input. */
+function modPaused(s: Snapshot): boolean {
+  if (s.queue.some((q) => q.status === 'held')) return true
+  const end = [...s.progress].reverse().find((p) => TERMINAL.has(p.kind))
+  return end?.kind === 'turn-aborted' || (end?.kind === 'info' && end.label === PAUSED_LABEL)
+}
 
 /** One-line collapsed pill text; null when nothing ever happened (pill hidden). */
 export function summarize(s: Snapshot): Summary | null {
   const last = s.progress[s.progress.length - 1]
-  const active = s.queue.find((q) => ACTIVE.has(q.status))
+  // The latest one: an older orphan left sent/running must not freeze the pill.
+  const active = [...s.queue].reverse().find((q) => ACTIVE.has(q.status))
   if (active) {
     if (last?.kind === 'waiting-permission') return { text: 'Čeká na schválení v terminálu', tone: 'wait' }
-    const tools = s.progress.filter((p) => p.kind === 'tool')
-    const tool = [...tools].reverse().find((p) => p.instructionId === active.id) ?? tools[tools.length - 1]
+    const tool = [...s.progress].reverse().find((p) => p.kind === 'tool' && p.instructionId === active.id)
     return { text: `Claude: ${tool ? tool.label : 'pracuje'}…`, tone: 'live' }
   }
   const queued = s.queue.filter((q) => q.status === 'queued').length
-  if (queued > 0) return { text: `Ve frontě: ${queued}`, tone: 'wait' }
+  if (queued > 0) return modPaused(s) ? { text: QUEUED_PAUSED_TEXT, tone: 'wait' } : { text: `Ve frontě: ${queued}`, tone: 'wait' }
   const finished = [...s.queue].reverse().find((q) => q.status === 'done' || q.status === 'aborted' || q.status === 'held')
   if (finished) return finished.status === 'done' ? { text: 'Hotovo', tone: 'ok' } : { text: 'Přerušeno', tone: 'idle' }
   if (last) return { text: last.label, tone: 'idle' }

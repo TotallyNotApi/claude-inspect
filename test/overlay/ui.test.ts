@@ -162,6 +162,36 @@ describe('picker', () => {
     esc()
     expect(button('Výběr vypnut')).toBeTruthy()
   })
+  it('Alt+C typed into a page field, textarea, select or contenteditable does not toggle picking', () => {
+    const input = document.createElement('input')
+    const area = document.createElement('textarea')
+    const select = document.createElement('select')
+    const editable = document.createElement('div')
+    editable.setAttribute('contenteditable', 'true')
+    const inner = document.createElement('span')
+    editable.append(inner)
+    document.body.append(input, area, select, editable)
+    for (const t of [input, area, select, editable, inner]) {
+      key('KeyC', { altKey: true, key: 'ç' }, t)
+      expect(button('Výběr vypnut'), t.tagName).toBeTruthy()
+    }
+  })
+  it("Alt+C in the bubble's own textarea does not toggle picking", () => {
+    pick(badge())
+    const field = $('.bubble textarea')!
+    key('KeyC', { altKey: true, key: 'ç' }, field)
+    expect(button('Výběr zapnut')).toBeTruthy()
+    expect($('.bubble')).toBeTruthy()
+  })
+  it('a repeated Alt+C keydown (key held) is ignored', () => {
+    key('KeyC', { altKey: true, key: 'ç', repeat: true })
+    expect(button('Výběr vypnut')).toBeTruthy()
+  })
+  it('Esc during IME composition does nothing', () => {
+    pick(badge())
+    key('Escape', { key: 'Escape', isComposing: true })
+    expect($('.bubble')).toBeTruthy()
+  })
 })
 
 describe('bubble actions', () => {
@@ -251,6 +281,19 @@ describe('batch', () => {
     expect(JSON.parse(sessionStorage.getItem('web-inspect:batch') ?? '[]')).toHaveLength(0)
     expect($('.batch')).toBeNull()
   })
+  it('a failed batch send shows a visible inline error, cleared by a successful retry', async () => {
+    pick(badge())
+    button('＋ Do dávky')!.click()
+    await vi.waitFor(() => expect($('.batch')).toBeTruthy())
+    expect($('.batch .err')?.hidden ?? true).toBe(true)
+    fetchMock.mockImplementationOnce(async () => new Response('{}', { status: 500 }))
+    button('Odeslat')!.click()
+    await vi.waitFor(() => expect($('.batch .err')!.hidden).toBe(false))
+    expect($('.batch .err')!.textContent).toBe('Nepodařilo se odeslat – běží proxy?')
+    expect($('.batch .err')!.getAttribute('role')).toBe('alert')
+    button('Odeslat')!.click()
+    await vi.waitFor(() => expect($('.batch')).toBeNull())
+  })
 })
 
 describe('progress pill', () => {
@@ -296,6 +339,77 @@ describe('progress pill', () => {
     button('Poslat znovu')!.click()
     await new Promise((r) => setTimeout(r, 20))
     expect($('.pill')).toBeTruthy()
+  })
+  it('picks the LATEST active entry, not an older orphan', () => {
+    es().emitSnapshot({
+      queue: [
+        { id: 'old', status: 'sent', summary: 'x' },
+        { id: 'new', status: 'running', summary: 'y' },
+      ],
+      progress: [
+        { kind: 'tool', label: 'čte Old.tsx', instructionId: 'old', at: 1 },
+        { kind: 'tool', label: 'upravuje New.tsx', instructionId: 'new', at: 2 },
+      ],
+    })
+    expect($('.pill-line')!.textContent).toBe('Claude: upravuje New.tsx…')
+  })
+  it("a fresh instruction without tool events shows Claude: pracuje…, not the previous one's tool", () => {
+    es().emitSnapshot({
+      queue: [
+        { id: 'a', status: 'done', summary: 'x' },
+        { id: 'b', status: 'running', summary: 'y' },
+      ],
+      progress: [
+        { kind: 'tool', label: 'upravuje Pricing.tsx', instructionId: 'a', at: 1 },
+        { kind: 'turn-done', label: 'Hotovo', instructionId: 'a', at: 2 },
+      ],
+    })
+    expect($('.pill-line')!.textContent).toBe('Claude: pracuje…')
+  })
+  it('after an abort, queued entries show the continue-in-terminal hint', () => {
+    es().emitSnapshot({
+      queue: [
+        { id: 'a', status: 'aborted', summary: 'x' },
+        { id: 'b', status: 'queued', summary: 'y' },
+      ],
+      progress: [{ kind: 'turn-aborted', label: 'Přerušeno', instructionId: 'a', at: 1 }],
+    })
+    expect($('.pill-line')!.textContent).toBe('Ve frontě – pokračuj zprávou v terminálu')
+  })
+  it('a held entry (mod paused) with queued entries shows the hint; resend only on aborted', () => {
+    es().emitSnapshot({
+      queue: [
+        { id: 'a', status: 'held', summary: 'x' },
+        { id: 'b', status: 'queued', summary: 'y' },
+      ],
+      progress: [{ kind: 'info', label: 'Přerušeno – pokračuj zprávou v terminálu', instructionId: 'a', at: 1 }],
+    })
+    expect($('.pill-line')!.textContent).toBe('Ve frontě – pokračuj zprávou v terminálu')
+    $('.pill-head')!.click()
+    expect(button('Poslat znovu')).toBeUndefined()
+    expect($('.q .hint')!.textContent).toBe('Pokračuj zprávou v terminálu')
+  })
+  it('queued after a done turn, or after a proxy-side orphan abort, is plain Ve frontě: N', () => {
+    es().emitSnapshot({
+      queue: [
+        { id: 'a', status: 'aborted', summary: 'x' },
+        { id: 'b', status: 'done', summary: 'x' },
+        { id: 'c', status: 'queued', summary: 'y' },
+      ],
+      progress: [
+        { kind: 'turn-aborted', label: 'Přerušeno', instructionId: 'a', at: 1 },
+        { kind: 'turn-done', label: 'Hotovo', instructionId: 'b', at: 2 },
+      ],
+    })
+    expect($('.pill-line')!.textContent).toBe('Ve frontě: 1')
+    es().emitSnapshot({
+      queue: [
+        { id: 'a', status: 'aborted', summary: 'x' },
+        { id: 'c', status: 'queued', summary: 'y' },
+      ],
+      progress: [{ kind: 'info', label: 'Přerušeno – instrukce nedokončena', instructionId: 'a', at: 1 }],
+    })
+    expect($('.pill-line')!.textContent).toBe('Ve frontě: 1')
   })
   it('SSE error shows proxy neběží', () => {
     es().onerror?.(new Event('error'))

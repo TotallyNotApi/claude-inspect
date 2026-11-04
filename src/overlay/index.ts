@@ -10,6 +10,17 @@ import { createPill } from './pill.ts'
 import { reactInfo } from './react.ts'
 import { CSS } from './styles.ts'
 
+/** Text-entry targets (page fields and the bubble's own textarea) keep Alt+C for typing. */
+function isEditable(t: EventTarget | undefined): boolean {
+  const el = t as HTMLElement | undefined
+  if (!el || typeof el.tagName !== 'string') return false
+  const tag = el.tagName.toUpperCase()
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  if (el.isContentEditable) return true
+  const ce = typeof el.closest === 'function' ? el.closest('[contenteditable]') : null
+  return !!ce && ce.getAttribute('contenteditable')?.toLowerCase() !== 'false'
+}
+
 const TOGGLE_OFF = 'Výběr vypnut'
 const TOGGLE_ON = 'Výběr zapnut'
 
@@ -85,9 +96,11 @@ export function mountOverlay(opts: { token: string; doc?: Document }): { destroy
   const onKey = (e: KeyboardEvent) => {
     // event.code: on macOS Alt+C produces key 'ç'.
     if (e.code === 'KeyC' && e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (e.repeat || isEditable(e.composedPath()[0])) return
       e.preventDefault()
       setPicking(!picker.active)
     } else if (e.key === 'Escape') {
+      if (e.isComposing) return
       if (bubble.target) bubble.close()
       else if (picker.active) setPicking(false)
       else return

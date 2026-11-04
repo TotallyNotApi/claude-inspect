@@ -72,6 +72,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid #d97706; outli
   margin-left: auto; background: #d97706; color: #fff; border: 0; border-radius: 4px; padding: 2px 8px; font-size: 11px;
 }
 .batch .send:disabled { opacity: .6; cursor: default; }
+.batch .err { color: #f87171; margin-left: 6px; }
 .pill-head {
   display: flex; align-items: center; width: 100%; background: none; border: 0; padding: 0; margin: 0;
   text-align: left; font-size: 11px;

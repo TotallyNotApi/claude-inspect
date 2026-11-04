@@ -2,6 +2,7 @@ import type { InstructionItem } from '../../plugin/hooks/lib/types.ts'
 import { placeBox } from './picker.ts'
 
 export const BATCH_KEY = 'web-inspect:batch'
+const SEND_FAILED = 'Nepodařilo se odeslat – běží proxy?'
 
 function storage(win: Window): Storage | null {
   try {
@@ -59,12 +60,18 @@ export function createBatch(opts: {
   sendBtn.type = 'button'
   sendBtn.className = 'send'
   sendBtn.textContent = 'Odeslat'
-  row.append(count, sep, sendBtn)
+  const err = doc.createElement('span')
+  err.className = 'err'
+  err.setAttribute('role', 'alert')
+  err.textContent = SEND_FAILED
+  err.hidden = true
+  row.append(count, sep, sendBtn, err)
 
   sendBtn.addEventListener('click', async () => {
     if (sending || !items.length) return
     sending = true
     sendBtn.disabled = true
+    err.hidden = true
     const sent = items
     try {
       await opts.send(sent)
@@ -72,7 +79,7 @@ export function createBatch(opts: {
       saveBatch(win, items)
       render()
     } catch {
-      sendBtn.title = 'Nepodařilo se odeslat – běží proxy?'
+      err.hidden = false
     } finally {
       sending = false
       sendBtn.disabled = false

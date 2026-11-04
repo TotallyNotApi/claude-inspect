@@ -14,6 +14,8 @@ Pro trvalé načítání přidej do `~/.claude/settings.json`:
 { "env": { "CLAUDE_CODE_PLUGIN_DIRS": "<cesta>/claude-inspect/plugin" } }
 ```
 
+`CLAUDE_CODE_PLUGIN_DIRS` načte adresáře pluginů stejně jako `--plugin-dir` (absolutní cesty oddělené `:`; jako proměnná prostředí nebo v `env` v `~/.claude/settings.json`), viz [Settings and environment variables](https://code.claude.com/docs/en/plugins/mods/reference.md#settings-and-environment-variables).
+
 Požadavky: Claude Code ≥ 2.1.287 (mody; testováno na **2.1.318**), Node ≥ 20. Plugin je zbuildovaný, instalace nic nestahuje.
 
 ## Použití
@@ -24,7 +26,10 @@ Požadavky: Claude Code ≥ 2.1.287 (mody; testováno na **2.1.318**), Node ≥ 
 4. Bublina: `✏️ Upravit`, `🗑 Smazat`, `✨ Vylepšit`, `＋ Do dávky` nebo vlastní instrukce (Enter pošle hned).
 5. Dávka: `＋ Do dávky` označí element číslem. Pilulka `Dávka (N) · Odeslat` pošle všechny najednou jako jednu zprávu.
 6. Pilulka vpravo dole ukazuje průběh (`Claude: upravuje …`, `Čeká na schválení v terminálu`, `Hotovo`, `Přerušeno`, u přerušené instrukce `Poslat znovu`).
-7. `/inspect stop` proxy ukončí. Když Claude Code skončí bez stopu, proxy zanikne sama cca 15 s po posledním heartbeatu (hned po startu má 30 s na první heartbeat).
+7. Když proxy přestane odpovídat (spadla, byla zabita), mod to do pár sekund pozná: stavový řádek ukáže `inspect: proxy spadla – /inspect <port>` a `/inspect` hlásí `proxy neběží`.
+8. `/inspect stop` proxy ukončí. Když Claude Code skončí bez stopu, proxy zanikne sama cca 15 s po posledním heartbeatu (hned po startu má 30 s na první heartbeat).
+
+**Bezpečnost:** proxy poslouchá jen na `127.0.0.1` a přijímá pouze požadavky s hlavičkou `Host` (a u `/__web-inspect/api/*` i `Origin`) `localhost`, `127.0.0.1` nebo `[::1]`; ostatní odmítne s 403 (ochrana proti DNS rebindingu). API navíc vyžaduje token, který zná jen vložený overlay a mod.
 
 Zpráva pro Claude obsahuje text elementu, značku, sekci, komponenty, HTML cestu, selektor, HTML a (když jde zjistit) `soubor:řádek`.
 
