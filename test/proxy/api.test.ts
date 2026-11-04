@@ -200,6 +200,22 @@ describe('watchdog', () => {
       vi.useRealTimers()
     }
   })
+  it('early heartbeat at t=1s: fires ~15s after it, not at end of grace', () => {
+    vi.useFakeTimers()
+    try {
+      const onTimeout = vi.fn()
+      const w = createWatchdog({ onTimeout })
+      vi.advanceTimersByTime(1_000)
+      w.heartbeat()
+      vi.advanceTimersByTime(14_900)
+      expect(onTimeout).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1_100)
+      expect(onTimeout).toHaveBeenCalledTimes(1)
+      w.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('grace: no shutdown before 30s without heartbeat', () => {
     vi.useFakeTimers()
     try {

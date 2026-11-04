@@ -207,7 +207,7 @@ export function createWatchdog(opts: WatchdogOptions): { heartbeat(): void; stop
   let last: number | null = null
   let fired = false
   const timer = setInterval(() => {
-    const deadline = last === null ? start + grace : Math.max(start + grace, last + timeout)
+    const deadline = last === null ? start + grace : last + timeout
     if (!fired && Date.now() >= deadline) {
       fired = true
       clearInterval(timer)

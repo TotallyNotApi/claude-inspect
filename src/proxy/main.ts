@@ -6,7 +6,7 @@
 process.noDeprecation = true
 
 import { randomBytes } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
+import { renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -88,7 +88,9 @@ async function main(): Promise<void> {
 
   const port = await listenFree(server, startPort)
   const info: LaunchInfo = { port, token, pid: process.pid, target }
-  writeFileSync(readyFile, JSON.stringify(info))
+  // Atomic: the launcher polls this file, so it must never see a partial write.
+  writeFileSync(`${readyFile}.tmp`, JSON.stringify(info))
+  renameSync(`${readyFile}.tmp`, readyFile)
   process.on('SIGTERM', shutdown)
   process.on('SIGINT', shutdown)
 }
