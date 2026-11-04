@@ -18,6 +18,7 @@ import {
   STOPPED_TEXT,
   INVALID_TEXT,
 } from './lib/inspect.ts'
+import { toolLabel } from './lib/progress.ts'
 import { step } from './lib/queue.ts'
 import type { Effect, QueueEvent, QueueState } from './lib/queue.ts'
 import type { LaunchInfo } from './lib/types.ts'
@@ -75,6 +76,16 @@ async function nowMs($: any): Promise<number> {
     return Date.now()
   }
 }
+
+// Progress for the overlay. Never awaited and never allowed to throw: a tool call must not notice it.
+function reportProgress($: any, kind: 'tool' | 'waiting-permission', label: string): void {
+  if (!active || queue.phase !== 'running') return
+  const instructionId = queue.current?.id
+  nowMs($)
+    .then((at) => post($, 'progress', { kind, label, instructionId, at }))
+    .catch(() => {})
+}
+
 
 async function dispatch($: any, ev: QueueEvent): Promise<void> {
   const r = step(queue, ev)
@@ -223,6 +234,22 @@ export function register(on: any) {
     if (e.agentId === undefined) dispatch($, { type: 'turn-complete', isAborted: !!e.isAborted }).catch(() => {})
     return next(e)
   })
+
+  on('tool.call', async ($: any, e: any, next: any) => {
+    try {
+      if (e.agentId === undefined) reportProgress($, 'tool', toolLabel(String(e.tool), e))
+    } catch {}
+    return next(e)
+  }).catch(($: any, e: any, next: any) => next(e))
+
+  on('tool.check', async ($: any, e: any, next: any) => {
+    const r = await next(e)
+    try {
+      if (e.agentId === undefined && r?.decision === 'ask')
+        reportProgress($, 'waiting-permission', 'Čeká na schválení v terminálu')
+    } catch {}
+    return r
+  }).catch(($: any, e: any, next: any) => next(e))
 
   // Real user input lifts a pause after Esc. Decided only from the kit-verified e.origin: a prompt
   // from any mod (this one's own $.prompt.submit skips this hook as re-entry anyway) arrives with
