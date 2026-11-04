@@ -27,6 +27,8 @@ export function normalizeSourcePath(file: string, cwd: string): string {
   return f
 }
 
+const NEXT_SCHEMES = new Set(['webpack-internal:', 'about:', 'rsc:', 'file:'])
+
 const hasScheme = (s: string) => /^[a-z][a-z0-9+.-]*:/i.test(s)
 
 function lastSourceMappingUrl(js: string): string | null {
@@ -67,7 +69,8 @@ export function createSourceResolver(opts: SourceResolverOptions) {
     return res.text()
   }
 
-  async function load(jsUrl: URL): Promise<Entry> {
+  // `jsUrl`: a bundle to read the sourceMappingURL from; `direct`: the URL of the map itself.
+  async function load(jsUrl: URL, direct = false): Promise<Entry> {
     const key = jsUrl.href
     const hit = cache.get(key)
     if (hit && Date.now() - hit.at < cacheTtlMs) {
@@ -75,17 +78,22 @@ export function createSourceResolver(opts: SourceResolverOptions) {
       cache.set(key, hit)
       return hit
     }
-    const js = await fetchText(jsUrl)
-    const ref = lastSourceMappingUrl(js)
-    if (!ref) throw new Error('no sourceMappingURL')
     let raw: string
     let mapUrl: URL
-    if (ref.startsWith('data:')) {
-      raw = decodeDataUrl(ref)
+    if (direct) {
+      raw = await fetchText(jsUrl)
       mapUrl = jsUrl
     } else {
-      mapUrl = toUpstream(new URL(ref, jsUrl))
-      raw = await fetchText(mapUrl)
+      const js = await fetchText(jsUrl)
+      const ref = lastSourceMappingUrl(js)
+      if (!ref) throw new Error('no sourceMappingURL')
+      if (ref.startsWith('data:')) {
+        raw = decodeDataUrl(ref)
+        mapUrl = jsUrl
+      } else {
+        mapUrl = toUpstream(new URL(ref, jsUrl))
+        raw = await fetchText(mapUrl)
+      }
     }
     const entry: Entry = { consumer: new SourceMapConsumer(JSON.parse(raw)), mapBase: mapUrl.pathname, at: Date.now() }
     cache.delete(key)
@@ -108,8 +116,14 @@ export function createSourceResolver(opts: SourceResolverOptions) {
   return async function resolveSource(url: string, line: number, column: number): Promise<SourceLoc | null> {
     try {
       const u = new URL(url)
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
-      const { consumer, mapBase } = await load(toUpstream(u))
+      let entry: Entry
+      if (u.protocol === 'http:' || u.protocol === 'https:') entry = await load(toUpstream(u))
+      else if (NEXT_SCHEMES.has(u.protocol)) {
+        // Next.js dev: webpack-internal modules and replayed Server Component frames
+        // (`about://React/Server/…`) are not fetchable as JS; Next serves their maps by name.
+        entry = await load(new URL(`${origin}/__nextjs_source-map?${new URLSearchParams({ filename: url })}`), true)
+      } else return null
+      const { consumer, mapBase } = entry
       // Stack columns are 1-based; source-map-js wants a 0-based column.
       const pos = consumer.originalPositionFor({ line, column: Math.max(0, column - 1) })
       if (!pos.source || pos.line == null) return null

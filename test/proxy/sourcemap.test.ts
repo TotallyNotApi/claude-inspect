@@ -112,6 +112,39 @@ describe('resolveSource', () => {
   })
 })
 
+describe('resolveSource via Next.js /__nextjs_source-map (webpack-internal and Server Component frames)', () => {
+  const nextMap = (url: string) => '/__nextjs_source-map?' + new URLSearchParams({ filename: url })
+  const RSC = 'about://React/Server/webpack-internal:///(rsc)/./components/PlanCard.tsx?13'
+
+  it('asks the dev server for the map of a non-http frame URL and maps the position', async () => {
+    const { port, hits } = await upstream({ [nextMap(RSC)]: makeMap('file:///home/me/app/components/PlanCard.tsx') })
+    const resolve = createSourceResolver({ target: port, cwd: CWD })
+    expect(await resolve(RSC, 20, 5)).toEqual({ file: 'components/PlanCard.tsx', line: 8, column: 10 })
+    expect(hits).toEqual([nextMap(RSC)])
+  })
+
+  it('works for webpack-internal client modules and rsc:// frames too', async () => {
+    const client = 'webpack-internal:///(app-pages-browser)/./src/Counter.tsx'
+    const rsc = 'rsc://React/Server/file:///home/me/app/src/Card.tsx?3'
+    const { port } = await upstream({
+      [nextMap(client)]: makeMap('webpack://_N_E/./src/Counter.tsx'),
+      [nextMap(rsc)]: makeMap('file:///home/me/app/src/Card.tsx'),
+    })
+    const resolve = createSourceResolver({ target: port, cwd: CWD })
+    expect(await resolve(client, 20, 5)).toEqual({ file: 'src/Counter.tsx', line: 8, column: 10 })
+    expect(await resolve(rsc, 20, 5)).toEqual({ file: 'src/Card.tsx', line: 8, column: 10 })
+  })
+
+  it('unknown module (Next answers 204/404) → null; other schemes are never fetched', async () => {
+    const { port, hits } = await upstream({})
+    const resolve = createSourceResolver({ target: port, cwd: CWD })
+    expect(await resolve('webpack-internal:///(rsc)/./components/Nope.tsx', 20, 5)).toBeNull()
+    expect(await resolve('javascript:alert(1)', 20, 5)).toBeNull()
+    expect(await resolve('data:text/javascript,1', 20, 5)).toBeNull()
+    expect(hits).toEqual([nextMap('webpack-internal:///(rsc)/./components/Nope.tsx')])
+  })
+})
+
 describe('resolveSource SSRF guard', () => {
   it('never fetches another host via //host or backslash paths, or a protocol-relative map ref', async () => {
     const evil = await upstream({

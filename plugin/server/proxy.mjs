@@ -3330,7 +3330,7 @@ var require_source_map = __commonJS({
 // src/proxy/main.ts
 import { randomBytes } from "node:crypto";
 import { renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -3361,7 +3361,7 @@ function tokenOk(given, token) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 function readJson(req) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve2, reject) => {
     const chunks = [];
     let size = 0;
     let failed = false;
@@ -3379,9 +3379,9 @@ function readJson(req) {
     req.on("end", () => {
       if (failed) return;
       const text = Buffer.concat(chunks).toString("utf8");
-      if (!text.trim()) return resolve({});
+      if (!text.trim()) return resolve2({});
       try {
-        resolve(JSON.parse(text));
+        resolve2(JSON.parse(text));
       } catch {
         reject(new HttpError(400, "invalid JSON"));
       }
@@ -3676,6 +3676,7 @@ function normalizeSourcePath(file, cwd) {
   if (root && f.startsWith(root + "/")) f = f.slice(root.length + 1);
   return f;
 }
+var NEXT_SCHEMES = /* @__PURE__ */ new Set(["webpack-internal:", "about:", "rsc:", "file:"]);
 var hasScheme = (s) => /^[a-z][a-z0-9+.-]*:/i.test(s);
 function lastSourceMappingUrl(js) {
   const re = /\/[/*][#@]\s*sourceMappingURL=([^\s'"*]+)/g;
@@ -3707,7 +3708,7 @@ function createSourceResolver(opts) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
   }
-  async function load(jsUrl) {
+  async function load(jsUrl, direct = false) {
     const key = jsUrl.href;
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at < cacheTtlMs) {
@@ -3715,17 +3716,22 @@ function createSourceResolver(opts) {
       cache.set(key, hit);
       return hit;
     }
-    const js = await fetchText(jsUrl);
-    const ref = lastSourceMappingUrl(js);
-    if (!ref) throw new Error("no sourceMappingURL");
     let raw;
     let mapUrl;
-    if (ref.startsWith("data:")) {
-      raw = decodeDataUrl(ref);
+    if (direct) {
+      raw = await fetchText(jsUrl);
       mapUrl = jsUrl;
     } else {
-      mapUrl = toUpstream(new URL(ref, jsUrl));
-      raw = await fetchText(mapUrl);
+      const js = await fetchText(jsUrl);
+      const ref = lastSourceMappingUrl(js);
+      if (!ref) throw new Error("no sourceMappingURL");
+      if (ref.startsWith("data:")) {
+        raw = decodeDataUrl(ref);
+        mapUrl = jsUrl;
+      } else {
+        mapUrl = toUpstream(new URL(ref, jsUrl));
+        raw = await fetchText(mapUrl);
+      }
     }
     const entry = { consumer: new import_source_map_js.SourceMapConsumer(JSON.parse(raw)), mapBase: mapUrl.pathname, at: Date.now() };
     cache.delete(key);
@@ -3744,8 +3750,12 @@ function createSourceResolver(opts) {
   return async function resolveSource(url, line, column) {
     try {
       const u = new URL(url);
-      if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-      const { consumer, mapBase } = await load(toUpstream(u));
+      let entry;
+      if (u.protocol === "http:" || u.protocol === "https:") entry = await load(toUpstream(u));
+      else if (NEXT_SCHEMES.has(u.protocol)) {
+        entry = await load(new URL(`${origin}/__nextjs_source-map?${new URLSearchParams({ filename: url })}`), true);
+      } else return null;
+      const { consumer, mapBase } = entry;
       const pos = consumer.originalPositionFor({ line, column: Math.max(0, column - 1) });
       if (!pos.source || pos.line == null) return null;
       const loc = { file: toFile(pos.source, mapBase), line: pos.line };
@@ -3836,12 +3846,12 @@ var InstructionStore = class {
 process.noDeprecation = true;
 var MAX_PORT_TRIES = 20;
 function listen(server, port) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve2, reject) => {
     const onError = (e) => reject(e);
     server.once("error", onError);
     server.listen(port, "127.0.0.1", () => {
       server.off("error", onError);
-      resolve();
+      resolve2();
     });
   });
 }
@@ -3873,7 +3883,7 @@ async function main() {
     console.error("usage: proxy --target <port> [--port <port>] [--cwd <dir>] --ready-file <path>");
     process.exit(2);
   }
-  const cwd = values.cwd;
+  const cwd = resolve(values.cwd);
   const token = randomBytes(32).toString("hex");
   const store = new InstructionStore();
   const here = dirname(fileURLToPath(import.meta.url));

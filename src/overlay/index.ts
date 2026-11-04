@@ -38,8 +38,10 @@ export function mountOverlay(opts: { token: string; doc?: Document }): { destroy
 
   async function buildItem(el: Element, instruction: string): Promise<InstructionItem> {
     const info = reactInfo(el)
+    // A stackFrame is resolved through the proxy; an already-known source (exact, or approximate
+    // for Next.js webpack-internal / Server Component frames) is the fallback.
     let source = info.source
-    if (!source && info.stackFrame) source = await api.resolveSource(info.stackFrame)
+    if (info.stackFrame) source = (await api.resolveSource(info.stackFrame)) ?? info.source
     return { instruction, element: { ...buildElementContext(el), components: info.components, ...(source ? { source } : {}) } }
   }
 
@@ -95,6 +97,12 @@ export function mountOverlay(opts: { token: string; doc?: Document }): { destroy
   }
   win.addEventListener('keydown', onKey, true)
 
+  // The Next.js dev indicator ("N", in <nextjs-portal>) sits bottom-left over the toggle chip.
+  const placeToggle = () => toggle.classList.toggle('beside-next', !!doc.querySelector('nextjs-portal'))
+  placeToggle()
+  const portalWatch = new win.MutationObserver(placeToggle)
+  portalWatch.observe(doc.body, { childList: true })
+
   let frame = 0
   const reposition = () => {
     frame = 0
@@ -109,13 +117,18 @@ export function mountOverlay(opts: { token: string; doc?: Document }): { destroy
   win.addEventListener('resize', schedule, { passive: true })
   // Re-renders/HMR move elements without scroll events; also re-attach the host if a framework wiped <body>.
   const timer = win.setInterval(() => {
-    if (!host.isConnected && doc.body) doc.body.append(host)
+    if (!host.isConnected && doc.body) {
+      doc.body.append(host)
+      portalWatch.observe(doc.body, { childList: true })
+    }
+    placeToggle()
     schedule()
   }, 1000)
 
   return {
     destroy() {
       win.clearInterval(timer)
+      portalWatch.disconnect()
       if (frame) win.cancelAnimationFrame(frame)
       win.removeEventListener('keydown', onKey, true)
       win.removeEventListener('scroll', schedule, { capture: true })

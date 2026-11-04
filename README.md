@@ -36,7 +36,7 @@ Zpráva pro Claude obsahuje text elementu, značku, sekci, komponenty, HTML cest
 
 - Redirecty na absolutní URL dev serveru (OAuth, `NEXTAUTH_URL`) overlay obejdou.
 - Po Esc je potřeba napsat zprávu v terminálu, než budou další instrukce z prohlížeče pokračovat.
-- Soubor:řádek nemusí být dostupný u Server Components v Next.js. V ověření na Next.js 15 (App Router) se zdroj nezjistil vůbec a seznam komponent obsahoval interní komponenty Next.js, takže zpráva spoléhá na text, HTML cestu a selektor. U Vite + React se zdroj zjistí (`src/PlanCard.tsx:6`).
+- Next.js App Router (ověřeno na Next.js 15.5 + webpack dev): komponenty se berou i ze Server Components (React 19 `_debugInfo`), interní komponenty Next.js se odfiltrují a soubor:řádek se dohledá přes `/__nextjs_source-map` dev serveru (např. `PlanCard ← Pricing ← Page ← RootLayout (components/PlanCard.tsx:6)`). Když se mapa nenačte, použije se jen přibližný řádek zkompilovaného modulu. Turbopack (`next dev --turbopack`) a starší React (bez `_debugInfo`) ověřené nejsou. Vite + React: `src/PlanCard.tsx:6`.
 - Schvalování oprávnění zůstává v terminálu.
 - Proxy se sama ukončí, když mod přestane posílat heartbeat (bez heartbeatu za cca 30 s). Je-li dev server na portu 3000 už obsazený, použij jiný port.
 

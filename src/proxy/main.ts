@@ -7,7 +7,7 @@ process.noDeprecation = true
 
 import { randomBytes } from 'node:crypto'
 import { renameSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import type { LaunchInfo } from '../../plugin/hooks/lib/types.js'
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
     console.error('usage: proxy --target <port> [--port <port>] [--cwd <dir>] --ready-file <path>')
     process.exit(2)
   }
-  const cwd = values.cwd as string
+  const cwd = resolve(values.cwd as string) // relative --cwd would never match absolute map sources
 
   const token = randomBytes(32).toString('hex')
   const store = new InstructionStore()

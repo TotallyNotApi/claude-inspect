@@ -5,6 +5,7 @@ import { parseStackFrames, reactInfo } from '../../src/overlay/react.ts'
 type Fiber = {
   type: unknown
   return: Fiber | null
+  _debugInfo?: unknown[]
   _debugSource?: { fileName: string; lineNumber: number; columnNumber?: number }
   _debugStack?: Error
 }
@@ -78,7 +79,7 @@ describe('reactInfo', () => {
     expect(reactInfo(el).stackFrame).toEqual({ url: 'http://localhost:4000/_next/static/chunks/app/page.js', line: 123, column: 45 })
   })
 
-  it('Next webpack dev: webpack-internal frame becomes source directly, no stackFrame', () => {
+  it('Next webpack dev: webpack-internal frame becomes approximate source plus a stackFrame to refine', () => {
     const card = fiber(named('PlanCard'), null)
     const host = fiber('div', card, {
       _debugStack: stackError(
@@ -94,6 +95,7 @@ describe('reactInfo', () => {
     expect(reactInfo(el)).toEqual({
       components: ['PlanCard'],
       source: { file: 'src/components/PlanCard.tsx', line: 10, column: 5 },
+      stackFrame: { url: 'webpack-internal:///(app-pages-browser)/./src/components/PlanCard.tsx', line: 10, column: 5 },
     })
   })
 
@@ -168,5 +170,155 @@ describe('parseStackFrames', () => {
       { url: 'http://h/a.js', line: 1, column: 2 },
       { url: 'http://h/b.js', line: 3, column: 4 },
     ])
+  })
+})
+
+// Shapes observed on Next.js 15.5 (webpack dev) + React 19 for <span class="badge"> rendered by the
+// Server Component PlanCard (components/PlanCard.tsx) inside Pricing inside app/page.tsx.
+describe('reactInfo on Next.js App Router (Server Components)', () => {
+  const NM = 'webpack-internal:///(app-pages-browser)/./node_modules'
+  const FLIGHT = `${NM}/next/dist/compiled/react-server-dom-webpack/cjs/react-server-dom-webpack-client.browser.development.js`
+  const serverStack = (fn: string, url: string, line: number, col: number) =>
+    stackError(
+      [
+        'Error: react-stack-top-frame',
+        `    at fakeJSXCallSite (${FLIGHT}:2623:14)`,
+        `    at ${fn} (about://React/Server/${url}:${line}:${col})`,
+        `    at Object.react_stack_bottom_frame (${FLIGHT}:3448:12)`,
+        `    at initializeElement (${FLIGHT}:1367:35)`,
+      ].join('\n'),
+    )
+  const nextStack = () =>
+    stackError(
+      [
+        'Error: react-stack-top-frame',
+        `    at exports.jsx (${NM}/next/dist/compiled/react/cjs/react-jsx-runtime.development.js:321:13)`,
+        `    at LayoutRouter (${NM}/next/dist/client/components/layout-router.js:500:20)`,
+      ].join('\n'),
+    )
+  // ReactComponentInfo as found in fiber._debugInfo (and as fiber._debugOwner).
+  const info = (name: string, owner: unknown = null) => ({
+    name,
+    env: 'Server',
+    key: null,
+    owner,
+    stack: [[name, `webpack-internal:///(rsc)/./components/${name}.tsx`, 32, 96, 10, 1, false]],
+    props: {},
+    debugTask: {},
+    debugStack: new Error('react-stack-top-frame'),
+  })
+
+  function nextTree() {
+    const rootLayout = info('RootLayout')
+    const page = info('Page')
+    const pricing = info('Pricing', page)
+    const planCard = info('PlanCard', pricing)
+    let f: Fiber | null = null
+    const push = (type: unknown, extra: Partial<Fiber> = {}) => (f = fiber(type, f, extra))
+    push(named('ServerRoot'), { _debugStack: nextStack() })
+    push(named('AppRouter'), { _debugStack: nextStack() })
+    push(named('Router'), { _debugStack: nextStack() })
+    push(named('HotReload'), { _debugStack: nextStack() })
+    push(named('AppDevOverlayErrorBoundary'))
+    push(named('DevRootHTTPAccessFallbackBoundary'))
+    push(named('HTTPAccessFallbackBoundary'))
+    push(named('RedirectBoundary'))
+    push(named('__next_root_layout_boundary__'))
+    push(named('SegmentViewNode'))
+    push('html', { _debugInfo: [rootLayout] })
+    push('body')
+    push(named('OuterLayoutRouter'))
+    push(named('SegmentStateProvider'))
+    push({ $$typeof: Symbol.for('react.context'), displayName: 'TemplateContext' })
+    push(named('RenderFromTemplateContext'))
+    push(named('ScrollAndFocusHandler'))
+    push(named('InnerScrollAndFocusHandler'))
+    push(named('ErrorBoundary'), { _debugStack: nextStack() })
+    push(named('LoadingBoundary'), { _debugStack: nextStack() })
+    push(named('HTTPAccessFallbackBoundary'))
+    push(named('HTTPAccessFallbackErrorBoundary'))
+    push(named('RedirectBoundary'))
+    push(named('RedirectErrorBoundary'))
+    push(named('InnerLayoutRouter'))
+    push({ $$typeof: Symbol.for('react.context'), displayName: 'LayoutRouterContext' })
+    push(named('SegmentViewNode'), { _debugStack: stackError('Error: react-stack-top-frame\n    at Promise.all (<anonymous>:1:20)') })
+    push(null, { _debugInfo: [page] })
+    push('main', { _debugInfo: [page] })
+    push('section', { _debugInfo: [pricing], _debugStack: serverStack('Pricing', 'webpack-internal:///(rsc)/./components/Pricing.tsx?2', 32, 96) })
+    push('div')
+    push('div', { _debugInfo: [planCard] })
+    const span = push('span', {
+      _debugStack: serverStack('PlanCard', 'webpack-internal:///(rsc)/./components/PlanCard.tsx?13', 12, 97),
+    })
+    return span
+  }
+
+  it('uses Server Component names from _debugInfo and drops every Next internal', () => {
+    const el = document.createElement('span')
+    attach(el, nextTree())
+    expect(reactInfo(el).components).toEqual(['PlanCard', 'Pricing', 'Page', 'RootLayout'])
+  })
+
+  it('derives an approximate source from the about://React/Server frame and keeps it as stackFrame', () => {
+    const el = document.createElement('span')
+    attach(el, nextTree())
+    const r = reactInfo(el)
+    expect(r.source).toEqual({ file: 'components/PlanCard.tsx', line: 12, column: 97 })
+    expect(r.stackFrame).toEqual({
+      url: 'about://React/Server/webpack-internal:///(rsc)/./components/PlanCard.tsx?13',
+      line: 12,
+      column: 97,
+    })
+  })
+
+  it('handles rsc://React/Server/file:// frames (absolute path source)', () => {
+    const el = document.createElement('b')
+    attach(
+      el,
+      fiber('b', fiber('div', null, { _debugInfo: [info('Card')] }), {
+        _debugStack: stackError(
+          'Error: react-stack-top-frame\n' +
+            `    at fakeJSXCallSite (${FLIGHT}:2623:14)\n` +
+            '    at Card (rsc://React/Server/file:///home/me/app/src/Card.tsx?3:7:5)',
+        ),
+      }),
+    )
+    const r = reactInfo(el)
+    expect(r.components).toEqual(['Card'])
+    expect(r.source).toEqual({ file: '/home/me/app/src/Card.tsx', line: 7, column: 5 })
+    expect(r.stackFrame).toEqual({ url: 'rsc://React/Server/file:///home/me/app/src/Card.tsx?3', line: 7, column: 5 })
+  })
+
+  it('a client component rendered by a Server Component lists itself, then the server owners', () => {
+    const page = info('Page')
+    const client = fiber(named('Counter'), fiber('main', null, { _debugInfo: [page] }), { _debugInfo: [info('Pricing', page)] })
+    const el = document.createElement('button')
+    attach(el, fiber('button', client))
+    expect(reactInfo(el).components).toEqual(['Counter', 'Pricing', 'Page'])
+  })
+
+  it('ignores non-component _debugInfo entries (timing, awaited I/O) and lists outer-first entries closest-first', () => {
+    const el = document.createElement('i')
+    attach(el, fiber('i', null, { _debugInfo: [{ time: 12 }, info('Outer'), { awaited: { name: 'fetch' } }, info('Inner'), { time: 13 }] }))
+    expect(reactInfo(el).components).toEqual(['Inner', 'Outer'])
+  })
+
+  it('keeps a user component named like a Next internal when its element was created in user code', () => {
+    const userStack = stackError(
+      'Error: react-stack-top-frame\n' +
+        `    at exports.jsx (${NM}/next/dist/compiled/react/cjs/react-jsx-runtime.development.js:321:13)\n` +
+        '    at Page (webpack-internal:///(app-pages-browser)/./app/page.tsx:9:5)',
+    )
+    const nextEb = fiber(named('ErrorBoundary'), null, { _debugStack: nextStack() })
+    const noInfoEb = fiber(named('ErrorBoundary'), nextEb)
+    const userEb = fiber(named('ErrorBoundary'), noInfoEb, { _debugStack: userStack })
+    const el = document.createElement('p')
+    attach(el, fiber('p', userEb))
+    expect(reactInfo(el).components).toEqual(['ErrorBoundary'])
+    // React <= 18: _debugSource outside node_modules also counts as user code.
+    const userEb18 = fiber(named('ErrorBoundary'), null, { _debugSource: { fileName: '/home/me/app/src/ErrorBoundary.tsx', lineNumber: 3 } })
+    const el2 = document.createElement('p')
+    attach(el2, fiber('p', userEb18))
+    expect(reactInfo(el2).components).toEqual(['ErrorBoundary'])
   })
 })

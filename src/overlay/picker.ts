@@ -31,7 +31,9 @@ export function shortName(el: Element): string {
 /** `div.plan · PlanCard (PlanCard.tsx:8)` — only cheap, already-known info (no network). */
 export function hoverLabel(el: Element): string {
   const info = reactInfo(el)
-  const src = info.source ? ` (${info.source.file.split('/').pop()}:${info.source.line})` : ''
+  // With a stackFrame the line is only approximate until the proxy resolves it (on pick): file only.
+  const line = info.source && !info.stackFrame ? `:${info.source.line}` : ''
+  const src = info.source ? ` (${info.source.file.split('/').pop()}${line})` : ''
   const comp = info.components[0]
   return shortName(el) + (comp ? ` · ${comp}${src}` : src)
 }

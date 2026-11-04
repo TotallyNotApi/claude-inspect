@@ -55,6 +55,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid #d97706; outli
   position: fixed; left: 12px; bottom: 12px; background: #1c1c1e; color: #eee; border: 0;
   border-radius: 20px; padding: 6px 11px; font-size: 11px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
 }
+.toggle.beside-next { left: 66px; bottom: 26px; }
 .toggle[aria-pressed="true"] { box-shadow: 0 0 0 1px #d97706, 0 4px 14px rgba(0,0,0,.25); }
 
 .stack {

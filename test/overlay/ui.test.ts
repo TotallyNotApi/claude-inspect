@@ -91,6 +91,19 @@ describe('mount', () => {
     expect(host().style.zIndex).toBe('2147483647')
     expect(button('Výběr vypnut')!.textContent).toBe('◎ Výběr vypnut · Alt+C')
   })
+  it('moves the toggle chip out of the way of the Next.js dev indicator (nextjs-portal), also when it appears later', async () => {
+    const toggle = () => $('.toggle')!
+    expect(toggle().classList.contains('beside-next')).toBe(false)
+    const portal = document.createElement('nextjs-portal')
+    document.body.append(portal)
+    await vi.waitFor(() => expect(toggle().classList.contains('beside-next')).toBe(true))
+    portal.remove()
+    await vi.waitFor(() => expect(toggle().classList.contains('beside-next')).toBe(false))
+    document.body.append(document.createElement('nextjs-portal'))
+    overlay.destroy()
+    overlay = mountOverlay({ token: 'tok' })
+    expect(toggle().classList.contains('beside-next')).toBe(true)
+  })
   it('destroy removes host, listeners and closes the EventSource', () => {
     const spy = vi.fn()
     badge().addEventListener('click', spy)
@@ -349,6 +362,35 @@ describe('react info', () => {
     button('🗑 Smazat')!.click()
     await vi.waitFor(() => expect(instructionCalls()).toHaveLength(1))
     expect(instructionCalls()[0].body.items[0].element).not.toHaveProperty('source')
+  })
+
+  it('Next.js Server Component: refines the approximate source via resolve-source, falls back to it on failure', async () => {
+    const rscFrame = 'about://React/Server/webpack-internal:///(rsc)/./components/PlanCard.tsx?13'
+    let resolved: unknown = { file: 'components/PlanCard.tsx', line: 6, column: 17 }
+    fetchMock.mockImplementation(async (url: string, init: RequestInit = {}) => {
+      calls.push({ url, body: JSON.parse(String(init.body)), headers: init.headers as Record<string, string> })
+      if (url.endsWith('/api/resolve-source')) return new Response(JSON.stringify(resolved))
+      return new Response(JSON.stringify({ id: 'i1' }))
+    })
+    const e = new Error('react-stack-top-frame')
+    e.stack = `Error: react-stack-top-frame\n    at fakeJSXCallSite (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-server-dom-webpack/x.js:1:1)\n    at PlanCard (${rscFrame}:12:97)`
+    const planCard = { name: 'PlanCard', env: 'Server', stack: [] }
+    attach(badge(), { type: 'span', _debugStack: e, return: { type: 'div', _debugInfo: [planCard], return: { type: named('SegmentViewNode'), return: null } } })
+    altC()
+    badge().dispatchEvent(new MouseEvent('mousemove', { bubbles: true, composed: true }))
+    expect($('.hover-label')!.textContent).toBe('span.badge · PlanCard (PlanCard.tsx)')
+    click(badge())
+    button('🗑 Smazat')!.click()
+    await vi.waitFor(() => expect(instructionCalls()).toHaveLength(1))
+    expect(calls.find((c) => c.url.endsWith('/api/resolve-source'))!.body).toEqual({ url: rscFrame, line: 12, column: 97 })
+    expect(instructionCalls()[0].body.items[0].element.components).toEqual(['PlanCard'])
+    expect(instructionCalls()[0].body.items[0].element.source).toEqual({ file: 'components/PlanCard.tsx', line: 6, column: 17 })
+
+    resolved = null // proxy could not map it → keep the approximate source
+    click(badge()) // picking is still on
+    button('🗑 Smazat')!.click()
+    await vi.waitFor(() => expect(instructionCalls()).toHaveLength(2))
+    expect(instructionCalls()[1].body.items[0].element.source).toEqual({ file: 'components/PlanCard.tsx', line: 12, column: 97 })
   })
 
   it('a failed send keeps the bubble open with an error', async () => {
