@@ -112,6 +112,22 @@ describe('resolveSource', () => {
   })
 })
 
+describe('resolveSource SSRF guard', () => {
+  it('never fetches another host via //host or backslash paths, or a protocol-relative map ref', async () => {
+    const evil = await upstream({
+      '/x.js': js(`//# sourceMappingURL=data:application/json;base64,${Buffer.from(makeMap('src/evil.ts')).toString('base64')}`),
+      '/x.map': makeMap('src/evil.ts'),
+    })
+    const good = await upstream({ '/m.js': js(`//# sourceMappingURL=//127.0.0.1:${evil.port}/x.map`) })
+    const resolve = createSourceResolver({ target: good.port, cwd: CWD })
+    expect(await resolve(`http://localhost:4000//127.0.0.1:${evil.port}/x.js`, 20, 5)).toBeNull()
+    expect(await resolve(`http://localhost:4000/\\127.0.0.1:${evil.port}/x.js`, 20, 5)).toBeNull()
+    expect(await resolve(`http://localhost:4000/m.js`, 20, 5)).toBeNull()
+    expect(evil.hits).toEqual([])
+    expect(good.hits).toEqual([`//127.0.0.1:${evil.port}/x.js`, `//127.0.0.1:${evil.port}/x.js`, '/m.js', '/x.map'])
+  })
+})
+
 describe('normalizeSourcePath', () => {
   it.each([
     ['webpack://_N_E/./src/a.tsx', 'src/a.tsx'],

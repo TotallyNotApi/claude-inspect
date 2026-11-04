@@ -78,6 +78,34 @@ describe('reactInfo', () => {
     expect(reactInfo(el).stackFrame).toEqual({ url: 'http://localhost:4000/_next/static/chunks/app/page.js', line: 123, column: 45 })
   })
 
+  it('Next webpack dev: webpack-internal frame becomes source directly, no stackFrame', () => {
+    const card = fiber(named('PlanCard'), null)
+    const host = fiber('div', card, {
+      _debugStack: stackError(
+        [
+          'Error: react-stack-top-frame',
+          '    at jsxDEV (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react/cjs/react-jsx-dev-runtime.development.js:346:13)',
+          '    at PlanCard (webpack-internal:///(app-pages-browser)/./src/components/PlanCard.tsx:10:5)',
+        ].join('\n'),
+      ),
+    })
+    const el = document.createElement('div')
+    attach(el, host)
+    expect(reactInfo(el)).toEqual({
+      components: ['PlanCard'],
+      source: { file: 'src/components/PlanCard.tsx', line: 10, column: 5 },
+    })
+  })
+
+  it('dedupes consecutive identical names (memo double fibers)', () => {
+    const page = fiber(named('Page'), null)
+    const memo = fiber({ $$typeof: Symbol.for('react.memo'), type: named('Card') }, page)
+    const inner = fiber(named('Card'), memo)
+    const el = document.createElement('div')
+    attach(el, fiber('div', inner))
+    expect(reactInfo(el).components).toEqual(['Card', 'Page'])
+  })
+
   it('filters Next.js internals, lowercase names, Providers/Contexts; handles forwardRef/memo/displayName; max 5', () => {
     let f: Fiber | null = null
     const chain: unknown[] = [

@@ -52,11 +52,17 @@ export function createSourceResolver(opts: SourceResolverOptions) {
   const origin = `http://localhost:${opts.target}`
   const cache = new Map<string, Entry>() // insertion order = LRU order
 
-  // Any URL the browser saw (proxy host) is re-pointed at the dev server.
-  const toUpstream = (u: URL) => new URL(u.pathname + u.search, origin)
+  // Any URL the browser saw (proxy host) is re-pointed at the dev server. String concatenation,
+  // not `new URL(path, origin)`: a `//host/...` pathname would be protocol-relative (SSRF).
+  const toUpstream = (u: URL) => {
+    const out = new URL(origin + u.pathname + u.search)
+    if (out.origin !== origin) throw new Error('refusing non-upstream origin')
+    return out
+  }
 
   async function fetchText(url: URL): Promise<string> {
-    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+    if (url.origin !== origin) throw new Error('refusing non-upstream origin')
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'error' })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return res.text()
   }

@@ -79,6 +79,16 @@ export function parseStackFrames(stack: string): StackFrame[] {
   return out
 }
 
+const WEBPACK_INTERNAL = 'webpack-internal:///'
+
+// `webpack-internal:///(app-pages-browser)/./src/x.tsx?abc` → `src/x.tsx`
+export function webpackInternalPath(url: string): string {
+  let p = url.slice(WEBPACK_INTERNAL.length).replace(/[?#].*$/, '')
+  p = p.replace(/^\([^)]*\)\//, '')
+  while (p.startsWith('./')) p = p.slice(2)
+  return p
+}
+
 function sourceOf(f: Fiber): Pick<ReactInfo, 'source' | 'stackFrame'> | null {
   const ds = f._debugSource
   if (ds && typeof ds.fileName === 'string' && typeof ds.lineNumber === 'number') {
@@ -89,6 +99,11 @@ function sourceOf(f: Fiber): Pick<ReactInfo, 'source' | 'stackFrame'> | null {
   const stack = f._debugStack?.stack
   if (typeof stack === 'string') {
     const frame = parseStackFrames(stack).find((fr) => !FRAMEWORK_FRAME.some((p) => fr.url.includes(p)))
+    if (frame?.url.startsWith(WEBPACK_INTERNAL)) {
+      // Next.js webpack dev (eval-source-map): not fetchable, but the URL names the file.
+      // Line/column are of the eval'd module code, so only approximate (Controller Ruling R12).
+      return { source: { file: webpackInternalPath(frame.url), line: frame.line, column: frame.column } }
+    }
     if (frame) return { stackFrame: frame }
   }
   return null
@@ -103,9 +118,12 @@ export function reactInfo(el: Element): ReactInfo {
       const isHost = typeof f.type === 'string'
       const name = isHost ? null : typeName(f.type)
       const keep = name !== null && isUserComponent(name)
-      if (keep && components.length < MAX_COMPONENTS) components.push(name)
-      // Source: the element's own (host) fiber first — its _debugSource/_debugStack points at the
-      // JSX inside the component that rendered it — then the nearest kept component fibers.
+      // Dedupe consecutive repeats (e.g. memo wrapper + inner fiber both named `Card`).
+      if (keep && components.length < MAX_COMPONENTS && components[components.length - 1] !== name)
+        components.push(name)
+      // Source: the nearest fiber, of either kind, that has a usable _debugSource/_debugStack —
+      // host fibers (whose debug info points at the JSX inside the component that rendered them)
+      // and components that passed the name filter; filtered-out components are skipped.
       if (!src && (isHost || keep)) src = sourceOf(f)
       if (components.length >= MAX_COMPONENTS && src) break
     }

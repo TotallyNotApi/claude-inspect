@@ -3696,9 +3696,14 @@ function createSourceResolver(opts) {
   const cacheTtlMs = opts.cacheTtlMs ?? 1e4;
   const origin = `http://localhost:${opts.target}`;
   const cache = /* @__PURE__ */ new Map();
-  const toUpstream = (u) => new URL(u.pathname + u.search, origin);
+  const toUpstream = (u) => {
+    const out = new URL(origin + u.pathname + u.search);
+    if (out.origin !== origin) throw new Error("refusing non-upstream origin");
+    return out;
+  };
   async function fetchText(url) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    if (url.origin !== origin) throw new Error("refusing non-upstream origin");
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: "error" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
   }
