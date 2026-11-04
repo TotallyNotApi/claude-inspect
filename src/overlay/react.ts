@@ -23,6 +23,9 @@ const NEXT_INTERNALS = new Set([
   'AppDevOverlay',
   'AppDevOverlayErrorBoundary',
   'AppRouter',
+  'AsyncMetadataOutlet',
+  'ClientPageRoot', // wraps every 'use client' page
+  'ClientSegmentRoot', // wraps every 'use client' layout
   'DevOverlay',
   'DevRootHTTPAccessFallbackBoundary',
   'DevRootNotFoundBoundary',
@@ -33,6 +36,7 @@ const NEXT_INTERNALS = new Set([
   'InnerScrollAndFocusHandler',
   'LayoutRouter',
   'MetadataBoundary',
+  'MetadataOutlet',
   'MetadataTree',
   'NotFoundErrorBoundary',
   'OuterLayoutRouter',

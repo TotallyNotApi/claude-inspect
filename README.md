@@ -24,13 +24,13 @@ Požadavky: Claude Code ≥ 2.1.287 (mody; testováno na **2.1.318**), Node ≥ 
 4. Bublina: `✏️ Upravit`, `🗑 Smazat`, `✨ Vylepšit`, `＋ Do dávky` nebo vlastní instrukce (Enter pošle hned).
 5. Dávka: `＋ Do dávky` označí element číslem. Pilulka `Dávka (N) · Odeslat` pošle všechny najednou jako jednu zprávu.
 6. Pilulka vpravo dole ukazuje průběh (`Claude: upravuje …`, `Čeká na schválení v terminálu`, `Hotovo`, `Přerušeno`, u přerušené instrukce `Poslat znovu`).
-7. `/inspect stop` proxy ukončí. Když Claude Code skončí bez stopu, proxy zanikne sama do cca 15 s.
+7. `/inspect stop` proxy ukončí. Když Claude Code skončí bez stopu, proxy zanikne sama cca 15 s po posledním heartbeatu (hned po startu má 30 s na první heartbeat).
 
 Zpráva pro Claude obsahuje text elementu, značku, sekci, komponenty, HTML cestu, selektor, HTML a (když jde zjistit) `soubor:řádek`.
 
 ## Příklady
 
-`examples/vite-react` (port 5173) a `examples/next-app` (port 3000, `next dev`) mají stejnou sekci „Ceník“. V každém: `npm install && npm run dev`.
+`examples/vite-react` (port 5173) a `examples/next-app` (port 3000, `next dev`) mají stejnou sekci „Ceník“. V každém: `npm install && npm run dev`. Je-li port obsazený, spusť dev server na jiném (např. `npx next dev -p 3100`) a předej ho `/inspect`.
 
 ## Známá omezení
 
@@ -38,7 +38,7 @@ Zpráva pro Claude obsahuje text elementu, značku, sekci, komponenty, HTML cest
 - Po Esc je potřeba napsat zprávu v terminálu, než budou další instrukce z prohlížeče pokračovat.
 - Next.js App Router (ověřeno na Next.js 15.5 + webpack dev): komponenty se berou i ze Server Components (React 19 `_debugInfo`), interní komponenty Next.js se odfiltrují a soubor:řádek se dohledá přes `/__nextjs_source-map` dev serveru (např. `PlanCard ← Pricing ← Page ← RootLayout (components/PlanCard.tsx:6)`). Když se mapa nenačte, použije se jen přibližný řádek zkompilovaného modulu. Turbopack (`next dev --turbopack`) a starší React (bez `_debugInfo`) ověřené nejsou. Vite + React: `src/PlanCard.tsx:6`.
 - Schvalování oprávnění zůstává v terminálu.
-- Proxy se sama ukončí, když mod přestane posílat heartbeat (bez heartbeatu za cca 30 s). Je-li dev server na portu 3000 už obsazený, použij jiný port.
+- Proxy se sama ukončí cca 15 s po posledním heartbeatu modu (hned po startu čeká na první heartbeat 30 s). Ruční spuštění bez Claude Code proto potřebuje vlastní heartbeat.
 
 ## Vývoj
 

@@ -321,4 +321,19 @@ describe('reactInfo on Next.js App Router (Server Components)', () => {
     attach(el2, fiber('p', userEb18))
     expect(reactInfo(el2).components).toEqual(['ErrorBoundary'])
   })
+
+  it("drops Next's wrappers around a 'use client' page/layout (ClientPageRoot, ClientSegmentRoot, metadata outlets)", () => {
+    let f: Fiber | null = null
+    const push = (type: unknown, extra: Partial<Fiber> = {}) => (f = fiber(type, f, extra))
+    push(named('ClientSegmentRoot'), { _debugStack: nextStack() })
+    push(named('Layout'))
+    push(named('MetadataOutlet'))
+    push(named('AsyncMetadataOutlet'))
+    push(named('ClientPageRoot'), { _debugStack: nextStack() })
+    push(named('Page'))
+    push(named('Counter'))
+    const el = document.createElement('button')
+    attach(el, push('button'))
+    expect(reactInfo(el).components).toEqual(['Counter', 'Page', 'Layout'])
+  })
 })
