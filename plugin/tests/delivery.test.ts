@@ -116,9 +116,20 @@ test('a dropped submit holds the instruction until the user types', async ($: an
   await $.prompt.submit({ text: 'pokračuj' })
   await S.clock.settle()
   expect(S.typed.length).toBe(1)
-expect(S.submits.length).toBe(2)
+  expect(S.submits.length).toBe(2)
   expect(S.submits[1].text).toBe(formatInstruction(I))
   expect(S.statuses()).toEqual(['sent', 'held', 'running'])
+})
+
+test('a prompt with no plugin origin while paused resubmits the held instruction', async ($: any, on: any) => {
+  const S = stubs(on, { submitResults: [{ drop: STOPPED }, undefined] })
+  await start($)
+  await S.clock.advance(500)
+  await S.clock.settle()
+  await $.prompt.submit({ text: 'pokračuj' })
+  await S.clock.settle()
+  expect(S.submits.length).toBe(2)
+  expect(S.submits[1].text).toBe(formatInstruction(I))
 })
 
 test('a prompt from a mod does not lift the hold', async ($: any, on: any) => {
@@ -126,7 +137,7 @@ test('a prompt from a mod does not lift the hold', async ($: any, on: any) => {
   await start($)
   await S.clock.advance(500)
   await S.clock.settle()
-  await $.prompt.submit({ text: 'od jiného modu', origin: { kind: 'plugin', name: 'other', asUser: false } })
+  await $.prompt.submit({ text: 'od jiného modu', origin: { kind: 'plugin', name: 'other-mod' } })
   await S.clock.advance(500)
   await S.clock.settle()
   expect(S.submits.length).toBe(1)
@@ -147,7 +158,7 @@ test('an aborted turn is not resent and waits for user input', async ($: any, on
   await $.prompt.submit({ text: 'jiná věc' })
   await S.clock.advance(500)
   await S.clock.settle()
-expect(S.submits.length).toBe(2)
+  expect(S.submits.length).toBe(2)
   expect(S.submits[1].text).toBe(formatInstruction({ ...I, id: 'i2' }))
 })
 

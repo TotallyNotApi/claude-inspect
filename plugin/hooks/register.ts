@@ -92,6 +92,8 @@ async function runEffects($: any, effects: Effect[]): Promise<void> {
         instruction = res?.instruction ?? null
       } catch {
         // Proxy down or not active: back to idle, try again next tick.
+        // Accepted risk: if the response is lost after the proxy's atomic take, that instruction
+        // stays `sent` (loopback, unlikely). Follow-up: the proxy could requeue stale `sent` ones.
       }
       if (gen === generation) await dispatch($, { type: 'polled', instruction })
     } else if (f.type === 'poll') {
@@ -104,7 +106,10 @@ async function runEffects($: any, effects: Effect[]): Promise<void> {
         heartbeatPending = false
       }
     } else if (f.type === 'submit') {
-      // Never awaited: it resolves only when the turn starts.
+      // Never awaited. Docs: $.prompt.submit "waits until the session is idle and then starts a new
+      // turn. It resolves when that turn starts."
+      // (https://code.claude.com/docs/en/plugins/mods/api.md#start-a-turn-from-a-background-job)
+      // So a resolved non-drop result maps to `submitted` (running). Re-checked live in Task 11.
       let submitted: Promise<any>
       try {
         submitted = Promise.resolve($.prompt.submit({ text: f.text, asUser: true }))
@@ -219,12 +224,11 @@ export function register(on: any) {
     return next(e)
   })
 
-  // Real user input lifts a pause after Esc. Not this mod's own $.prompt.submit (the kit and
-  // Claude Code skip our hook for those as re-entry; e.origin = { kind: 'plugin', name, asUser }
-  // is checked anyway), and not another mod's prompt either: only the user's input ends the hold.
+  // Real user input lifts a pause after Esc. Decided only from the kit-verified e.origin: a prompt
+  // from any mod (this one's own $.prompt.submit skips this hook as re-entry anyway) arrives with
+  // e.origin = { kind: 'plugin', name, asUser }; only the user's input ends the hold.
   on('prompt.submit', async ($: any, e: any, next: any) => {
-    const byEngine = (next.origin?.plugin ?? 'engine') === 'engine'
-    if (active && queue.phase === 'paused' && byEngine && e.origin?.kind !== 'plugin') {
+    if (active && queue.phase === 'paused' && e.origin?.kind !== 'plugin') {
       // $.prompt.submit is refused inside a prompt.submit hook, so resubmit from a timer.
       Promise.resolve($.clock.after(0, () => dispatch($, { type: 'user-input' }))).catch(() => {})
     }
