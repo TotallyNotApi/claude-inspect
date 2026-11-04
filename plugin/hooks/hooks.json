@@ -1,0 +1,1 @@
+{ "description": "web-inspect hooks module", "modules": ["./register.ts"] }

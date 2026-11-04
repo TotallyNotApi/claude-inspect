@@ -1,0 +1,6 @@
+{
+  "name": "web-inspect",
+  "version": "0.1.0",
+  "description": "Klikni na element na svém dev webu a pošli instrukci do běžící session Claude Code.",
+  "author": { "name": "Ondřej Konařík" }
+}

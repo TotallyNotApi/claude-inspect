@@ -1,0 +1,22 @@
+{
+  "name": "web-inspect-dev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:mod": "cd plugin && claude plugin test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/http-proxy": "^1.17.17",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "happy-dom": "^21.0.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1",
+    "source-map-js": "^1.2.2"
+  }
+}
