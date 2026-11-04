@@ -125,7 +125,8 @@ test('node missing (process.run rejects)', async ($: any, on: any) => {
   stubs(on, { throws: 'spawn node ENOENT' })
   await boot($)
   const t = (await run($, '3000')).text
-  expect(t).toMatch(/^nepodařilo se spustit proxy \(.*ENOENT.*\)\. Potřebuješ Node 20\+\.$/)
+  // The kit turns the { deny } stub into a rejection whose message is prefixed 'web-inspect: $.process.run: '.
+  expect(t).toBe('nepodařilo se spustit proxy (web-inspect: $.process.run: spawn node ENOENT). Potřebuješ Node 20+.')
 })
 
 test('session.end fires shutdown and forgets the store key', async ($: any, on: any) => {
