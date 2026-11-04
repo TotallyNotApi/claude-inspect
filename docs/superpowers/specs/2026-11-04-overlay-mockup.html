@@ -1,0 +1,60 @@
+<style>
+  .lp{position:relative;background:#fff;color:#111;font-family:system-ui;border-radius:6px;overflow:hidden;height:360px;font-size:12px}
+  .lp .nav{display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #eee;font-weight:600}
+  .lp .sec{padding:16px 14px}
+  .lp h4{margin:0 0 6px;font-size:16px;display:inline-block}
+  .lp .plans{display:flex;gap:8px;margin-top:10px}
+  .lp .plan{flex:1;border:1px solid #e5e5e5;border-radius:6px;padding:8px;position:relative}
+  .lp .badge{display:inline-block;background:#eef2ff;color:#4338ca;font-size:10px;padding:2px 6px;border-radius:10px;margin-bottom:4px}
+  .hov{outline:1px dashed #d97706;outline-offset:2px}
+  .sel{outline:2px solid #d97706;outline-offset:2px;border-radius:4px;position:relative}
+  .num{position:absolute;top:-9px;right:-9px;background:#d97706;color:#fff;width:16px;height:16px;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center}
+  .tag{position:absolute;background:#d97706;color:#fff;font:10px ui-monospace,monospace;padding:2px 5px;border-radius:3px;white-space:nowrap;z-index:2}
+  .pop{position:absolute;background:#1c1c1e;color:#eee;border-radius:8px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:11px;z-index:3}
+  .chip{display:inline-block;background:#2c2c2e;border:1px solid #3a3a3c;border-radius:5px;padding:3px 7px;margin:2px;color:#eee}
+  .inp{background:#2c2c2e;border:1px solid #3a3a3c;border-radius:5px;padding:5px 7px;color:#888;margin-top:5px}
+  .pill{position:absolute;right:10px;bottom:10px;background:#1c1c1e;color:#eee;border-radius:10px;padding:8px 10px;font-size:11px;z-index:3;width:210px}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#d97706;margin-right:5px;animation:pl 1s infinite}
+  @keyframes pl{50%{opacity:.3}}
+  .log{color:#9a9a9a;font-family:ui-monospace,monospace;font-size:10px;line-height:1.6;margin-top:4px}
+  .toggle{position:absolute;left:10px;bottom:10px;background:#1c1c1e;color:#eee;border-radius:20px;padding:6px 10px;font-size:11px;z-index:3}
+</style>
+
+<h2>Varianta A, rozpracovaná: dávka + rozbalený průběh</h2>
+<p class="subtitle">Dva elementy jsou už „v dávce“ (očíslované), třetí právě vybíráš. Vpravo dole je rozbalený průběh, vlevo dole přepínač režimu výběru.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Tvůj dev server přes proxy · localhost:4000</div>
+  <div class="mockup-body">
+    <div class="lp">
+      <div class="nav"><span>Acme</span><span>Funkce · Ceník · Kontakt</span></div>
+      <div class="sec">
+        <h4 class="sel">Ceník<span class="num">1</span></h4>
+        <div class="plans">
+          <div class="plan">Basic<br><b>0 Kč</b></div>
+          <div class="plan">
+            <span class="badge sel">Nejoblíbenější<span class="num">2</span></span><br>Pro<br><b>290 Kč</b>
+          </div>
+          <div class="plan hov" style="position:relative">
+            <div class="tag" style="top:-14px;left:4px">div.plan · PlanCard.tsx:8</div>
+            Team<br><b>990 Kč</b>
+            <div class="pop" style="top:46px;right:0;width:200px">
+              <span class="chip">✏️ Upravit</span><span class="chip">🗑 Smazat</span><span class="chip">✨ Vylepšit</span><span class="chip">＋ Do dávky</span>
+              <div class="inp">Vlastní instrukce… (⏎ pošle hned)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="toggle">◎ Výběr zapnut · <b>Alt+C</b></div>
+      <div class="pill">
+        <b>Dávka (2)</b> <span style="float:right;background:#d97706;border-radius:4px;padding:1px 6px">Odeslat</span>
+        <div class="log" style="border-top:1px solid #333;margin-top:6px;padding-top:4px">
+          předchozí úkol:<br>
+          ✓ Read Hero.tsx<br>
+          ✓ Edit Hero.tsx<br>
+          <span class="dot"></span>čeká na tvé schválení v terminálu
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
