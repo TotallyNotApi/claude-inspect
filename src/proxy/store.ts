@@ -42,6 +42,20 @@ export class InstructionStore {
     return true
   }
 
+  /** Marks every sent/running entry aborted and records `label` as an info event for each. */
+  abortInFlight(label: string): number {
+    const orphans = this.entries.filter((e) => e.status === 'sent' || e.status === 'running')
+    if (!orphans.length) return 0
+    const at = Date.now()
+    for (const e of orphans) {
+      e.status = 'aborted'
+      this.progress.push({ kind: 'info', label, at, instructionId: e.instruction.id })
+    }
+    if (this.progress.length > MAX_PROGRESS) this.progress.splice(0, this.progress.length - MAX_PROGRESS)
+    this.emit()
+    return orphans.length
+  }
+
   /** aborted/held -> queued at the front of the queue. Other statuses return false. */
   resend(id: string): boolean {
     const i = this.entries.findIndex((x) => x.instruction.id === id)

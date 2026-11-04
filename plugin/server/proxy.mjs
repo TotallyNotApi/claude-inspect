@@ -3329,7 +3329,8 @@ var require_source_map = __commonJS({
 
 // src/proxy/main.ts
 import { randomBytes } from "node:crypto";
-import { renameSync, writeFileSync } from "node:fs";
+import { renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -3337,10 +3338,187 @@ import { parseArgs } from "node:util";
 // src/proxy/api.ts
 import { readFile } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
+
+// src/proxy/server.ts
+var import_http_proxy = __toESM(require_http_proxy3(), 1);
+import http from "node:http";
+import zlib from "node:zlib";
+
+// src/proxy/inject.ts
+import { Transform } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
+var HEAD_RE = /<head(?=[\s>\/])[^>]*>/i;
+var BODY_CLOSE_RE = /<\/body\s*>/i;
+function createInjector(tag) {
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  let done = false;
+  const process2 = (final) => {
+    const head = HEAD_RE.exec(pending);
+    if (head) {
+      const end = head.index + head[0].length;
+      const out2 = pending.slice(0, end) + tag;
+      const rest = pending.slice(end);
+      pending = "";
+      done = true;
+      return out2 + rest;
+    }
+    const body = BODY_CLOSE_RE.exec(pending);
+    if (body) {
+      const out2 = pending.slice(0, body.index) + tag;
+      const rest = pending.slice(body.index);
+      pending = "";
+      done = true;
+      return out2 + rest;
+    }
+    if (final) {
+      const out2 = pending + tag;
+      pending = "";
+      done = true;
+      return out2;
+    }
+    const lt = pending.lastIndexOf("<");
+    if (lt === -1 || pending.indexOf(">", lt) !== -1) {
+      const out2 = pending;
+      pending = "";
+      return out2;
+    }
+    const out = pending.slice(0, lt);
+    pending = pending.slice(lt);
+    return out;
+  };
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      pending += decoder.write(chunk);
+      if (done) {
+        const out2 = pending;
+        pending = "";
+        return cb(null, out2);
+      }
+      const out = process2(false);
+      cb(null, out);
+    },
+    flush(cb) {
+      pending += decoder.end();
+      if (done) return cb(null, pending);
+      cb(null, process2(true));
+    }
+  });
+}
+
+// src/proxy/server.ts
+var LOCAL_HOSTNAMES = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "[::1]"]);
+function isLocalHost(host) {
+  if (!host || /[\s/@?#\\]/.test(host)) return false;
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(`http://${host}`).hostname);
+  } catch {
+    return false;
+  }
+}
+function isLocalOrigin(origin) {
+  if (origin === void 0) return true;
+  if (typeof origin !== "string") return false;
+  try {
+    const u = new URL(origin);
+    return (u.protocol === "http:" || u.protocol === "https:") && LOCAL_HOSTNAMES.has(u.hostname);
+  } catch {
+    return false;
+  }
+}
+var FORBIDDEN = "web-inspect: only localhost Host is accepted";
+function createProxyServer(opts) {
+  const { target, overlayTag, handleOwn } = opts;
+  const upstreamHost = `localhost:${target}`;
+  const upstreamOrigin = `http://${upstreamHost}`;
+  const proxy = import_http_proxy.default.createProxyServer({
+    target: `http://${upstreamHost}`,
+    ws: true,
+    changeOrigin: true,
+    xfwd: false,
+    selfHandleResponse: true
+  });
+  const rewrite = (proxyReq, req) => {
+    proxyReq.setHeader("host", upstreamHost);
+    if (req.headers.origin && isLocalOrigin(req.headers.origin)) proxyReq.setHeader("origin", upstreamOrigin);
+  };
+  proxy.on("proxyReq", (proxyReq, req) => {
+    rewrite(proxyReq, req);
+    if (String(req.headers.accept ?? "").includes("text/html")) {
+      proxyReq.removeHeader("accept-encoding");
+    }
+  });
+  proxy.on("proxyReqWs", (proxyReq, req) => rewrite(proxyReq, req));
+  proxy.on("proxyRes", (proxyRes, _req, res) => {
+    const headers = { ...proxyRes.headers };
+    const type = String(headers["content-type"] ?? "");
+    if (!/^text\/html/i.test(type)) {
+      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.statusMessage, proxyRes.rawHeaders);
+      proxyRes.pipe(res);
+      return;
+    }
+    const encoding = String(headers["content-encoding"] ?? "").trim().toLowerCase();
+    let source = proxyRes;
+    if (encoding === "gzip" || encoding === "x-gzip") source = proxyRes.pipe(zlib.createGunzip());
+    else if (encoding === "br") source = proxyRes.pipe(zlib.createBrotliDecompress());
+    else if (encoding === "deflate") source = proxyRes.pipe(zlib.createInflate());
+    else if (encoding && encoding !== "identity") {
+      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.statusMessage, proxyRes.rawHeaders);
+      proxyRes.pipe(res);
+      return;
+    }
+    delete headers["content-encoding"];
+    delete headers["content-length"];
+    res.writeHead(proxyRes.statusCode ?? 502, proxyRes.statusMessage, headers);
+    const injector = createInjector(overlayTag);
+    source.on("error", () => res.destroy());
+    source.pipe(injector).pipe(res);
+  });
+  proxy.on("error", (_err, _req, res) => {
+    if (res instanceof http.ServerResponse) {
+      if (!res.headersSent) {
+        res.writeHead(502, { "content-type": "text/html; charset=utf-8" });
+      }
+      res.end(`<!doctype html><meta charset="utf-8"><p>web-inspect: dev server na portu ${target} neodpov\xEDd\xE1</p>`);
+    } else {
+      ;
+      res.destroy();
+    }
+  });
+  const server = http.createServer((req, res) => {
+    if (!isLocalHost(req.headers.host)) {
+      res.writeHead(403, { "content-type": "text/plain; charset=utf-8", connection: "close" });
+      res.end(FORBIDDEN);
+      return;
+    }
+    if (handleOwn(req, res)) return;
+    proxy.web(req, res);
+  });
+  server.on("upgrade", (req, socket, head) => {
+    socket.on("error", () => socket.destroy());
+    if (!isLocalHost(req.headers.host)) {
+      socket.end(
+        `HTTP/1.1 403 Forbidden\r
+content-type: text/plain; charset=utf-8\r
+content-length: ${Buffer.byteLength(FORBIDDEN)}\r
+connection: close\r
+\r
+${FORBIDDEN}`
+      );
+      return;
+    }
+    proxy.ws(req, socket, head);
+  });
+  server.on("close", () => proxy.close());
+  return server;
+}
+
+// src/proxy/api.ts
 var PREFIX = "/__web-inspect";
 var MAX_BODY = 1024 * 1024;
 var KEEPALIVE_MS = 15e3;
 var STATUSES = ["queued", "sent", "running", "done", "aborted", "held"];
+var ORPHANED_LABEL = "P\u0159eru\u0161eno \u2013 instrukce nedokon\u010Dena";
 var KINDS = ["tool", "waiting-permission", "turn-done", "turn-aborted", "info"];
 var HttpError = class extends Error {
   constructor(status, message) {
@@ -3428,6 +3606,7 @@ data: ${JSON.stringify(store.snapshot())}
     const method = req.method ?? "GET";
     if (path === "/overlay.js" && method === "GET") return serveOverlay(res);
     if (!path.startsWith("/api/")) throw new HttpError(404, "not found");
+    if (!isLocalOrigin(req.headers.origin)) throw new HttpError(403, "forbidden origin");
     const given = req.headers["x-web-inspect-token"] ?? url.searchParams.get("token") ?? void 0;
     if (!tokenOk(given, opts.token)) throw new HttpError(401, "unauthorized");
     if (path === "/api/events" && method === "GET") return serveEvents(req, res);
@@ -3449,6 +3628,7 @@ data: ${JSON.stringify(store.snapshot())}
       case "/api/poll": {
         opts.onHeartbeat();
         const canTake = isObj(body) && body.canTake === true;
+        if (canTake) store.abortInFlight(ORPHANED_LABEL);
         return sendJson(res, 200, { instruction: canTake ? store.take() : null });
       }
       case "/api/status": {
@@ -3504,163 +3684,35 @@ data: ${JSON.stringify(store.snapshot())}
 function createWatchdog(opts) {
   const timeout = opts.heartbeatTimeoutMs ?? 15e3;
   const grace = opts.graceMs ?? 3e4;
-  const start = Date.now();
+  const interval = opts.checkIntervalMs ?? 1e3;
+  const now = opts.now ?? (() => performance.now());
+  const start = now();
   let last = null;
+  let lastWall = Date.now();
   let fired = false;
   const timer = setInterval(() => {
+    const wall = Date.now();
+    const jumped = wall - lastWall > 2 * interval;
+    lastWall = wall;
+    if (jumped) {
+      last = now();
+      return;
+    }
     const deadline = last === null ? start + grace : last + timeout;
-    if (!fired && Date.now() >= deadline) {
+    if (!fired && now() >= deadline) {
       fired = true;
       clearInterval(timer);
       opts.onTimeout();
     }
-  }, opts.checkIntervalMs ?? 1e3);
+  }, interval);
   return {
     heartbeat() {
-      last = Date.now();
+      last = now();
     },
     stop() {
       clearInterval(timer);
     }
   };
-}
-
-// src/proxy/server.ts
-var import_http_proxy = __toESM(require_http_proxy3(), 1);
-import http from "node:http";
-import zlib from "node:zlib";
-
-// src/proxy/inject.ts
-import { Transform } from "node:stream";
-import { StringDecoder } from "node:string_decoder";
-var HEAD_RE = /<head(?=[\s>\/])[^>]*>/i;
-var BODY_CLOSE_RE = /<\/body\s*>/i;
-function createInjector(tag) {
-  const decoder = new StringDecoder("utf8");
-  let pending = "";
-  let done = false;
-  const process2 = (final) => {
-    const head = HEAD_RE.exec(pending);
-    if (head) {
-      const end = head.index + head[0].length;
-      const out2 = pending.slice(0, end) + tag;
-      const rest = pending.slice(end);
-      pending = "";
-      done = true;
-      return out2 + rest;
-    }
-    const body = BODY_CLOSE_RE.exec(pending);
-    if (body) {
-      const out2 = pending.slice(0, body.index) + tag;
-      const rest = pending.slice(body.index);
-      pending = "";
-      done = true;
-      return out2 + rest;
-    }
-    if (final) {
-      const out2 = pending + tag;
-      pending = "";
-      done = true;
-      return out2;
-    }
-    const lt = pending.lastIndexOf("<");
-    if (lt === -1 || pending.indexOf(">", lt) !== -1) {
-      const out2 = pending;
-      pending = "";
-      return out2;
-    }
-    const out = pending.slice(0, lt);
-    pending = pending.slice(lt);
-    return out;
-  };
-  return new Transform({
-    transform(chunk, _enc, cb) {
-      pending += decoder.write(chunk);
-      if (done) {
-        const out2 = pending;
-        pending = "";
-        return cb(null, out2);
-      }
-      const out = process2(false);
-      cb(null, out);
-    },
-    flush(cb) {
-      pending += decoder.end();
-      if (done) return cb(null, pending);
-      cb(null, process2(true));
-    }
-  });
-}
-
-// src/proxy/server.ts
-function createProxyServer(opts) {
-  const { target, overlayTag, handleOwn } = opts;
-  const upstreamHost = `localhost:${target}`;
-  const upstreamOrigin = `http://${upstreamHost}`;
-  const proxy = import_http_proxy.default.createProxyServer({
-    target: `http://${upstreamHost}`,
-    ws: true,
-    changeOrigin: true,
-    xfwd: false,
-    selfHandleResponse: true
-  });
-  const rewrite = (proxyReq, req) => {
-    proxyReq.setHeader("host", upstreamHost);
-    if (req.headers.origin) proxyReq.setHeader("origin", upstreamOrigin);
-  };
-  proxy.on("proxyReq", (proxyReq, req) => {
-    rewrite(proxyReq, req);
-    if (String(req.headers.accept ?? "").includes("text/html")) {
-      proxyReq.removeHeader("accept-encoding");
-    }
-  });
-  proxy.on("proxyReqWs", (proxyReq, req) => rewrite(proxyReq, req));
-  proxy.on("proxyRes", (proxyRes, _req, res) => {
-    const headers = { ...proxyRes.headers };
-    const type = String(headers["content-type"] ?? "");
-    if (!/^text\/html/i.test(type)) {
-      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.statusMessage, proxyRes.rawHeaders);
-      proxyRes.pipe(res);
-      return;
-    }
-    const encoding = String(headers["content-encoding"] ?? "").trim().toLowerCase();
-    let source = proxyRes;
-    if (encoding === "gzip" || encoding === "x-gzip") source = proxyRes.pipe(zlib.createGunzip());
-    else if (encoding === "br") source = proxyRes.pipe(zlib.createBrotliDecompress());
-    else if (encoding === "deflate") source = proxyRes.pipe(zlib.createInflate());
-    else if (encoding && encoding !== "identity") {
-      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.statusMessage, proxyRes.rawHeaders);
-      proxyRes.pipe(res);
-      return;
-    }
-    delete headers["content-encoding"];
-    delete headers["content-length"];
-    res.writeHead(proxyRes.statusCode ?? 502, proxyRes.statusMessage, headers);
-    const injector = createInjector(overlayTag);
-    source.on("error", () => res.destroy());
-    source.pipe(injector).pipe(res);
-  });
-  proxy.on("error", (_err, _req, res) => {
-    if (res instanceof http.ServerResponse) {
-      if (!res.headersSent) {
-        res.writeHead(502, { "content-type": "text/html; charset=utf-8" });
-      }
-      res.end(`<!doctype html><meta charset="utf-8"><p>web-inspect: dev server na portu ${target} neodpov\xEDd\xE1</p>`);
-    } else {
-      ;
-      res.destroy();
-    }
-  });
-  const server = http.createServer((req, res) => {
-    if (handleOwn(req, res)) return;
-    proxy.web(req, res);
-  });
-  server.on("upgrade", (req, socket, head) => {
-    socket.on("error", () => socket.destroy());
-    proxy.ws(req, socket, head);
-  });
-  server.on("close", () => proxy.close());
-  return server;
 }
 
 // src/proxy/sourcemap.ts
@@ -3801,6 +3853,19 @@ var InstructionStore = class {
     this.emit();
     return true;
   }
+  /** Marks every sent/running entry aborted and records `label` as an info event for each. */
+  abortInFlight(label) {
+    const orphans = this.entries.filter((e) => e.status === "sent" || e.status === "running");
+    if (!orphans.length) return 0;
+    const at = Date.now();
+    for (const e of orphans) {
+      e.status = "aborted";
+      this.progress.push({ kind: "info", label, at, instructionId: e.instruction.id });
+    }
+    if (this.progress.length > MAX_PROGRESS) this.progress.splice(0, this.progress.length - MAX_PROGRESS);
+    this.emit();
+    return orphans.length;
+  }
   /** aborted/held -> queued at the front of the queue. Other statuses return false. */
   resend(id) {
     const i = this.entries.findIndex((x) => x.instruction.id === id);
@@ -3855,9 +3920,10 @@ function listen(server, port) {
     });
   });
 }
-async function listenFree(server, start) {
+async function listenFree(server, start, target) {
   for (let i = 0; i < MAX_PORT_TRIES; i++) {
     const port = start + i;
+    if (port === target) continue;
     try {
       await listen(server, port);
       return port;
@@ -3889,10 +3955,15 @@ async function main() {
   const here = dirname(fileURLToPath(import.meta.url));
   const overlayJsPath = join(here, "overlay.js");
   let server;
+  const logFile = join(tmpdir(), `web-inspect-${process.pid}.log`);
   const shutdown = () => {
     watchdog.stop();
     server.closeAllConnections();
     server.close();
+    try {
+      rmSync(logFile, { force: true });
+    } catch {
+    }
     process.exit(0);
   };
   const watchdog = createWatchdog({ onTimeout: shutdown });
@@ -3908,7 +3979,7 @@ async function main() {
     overlayTag: `<script src="/__web-inspect/overlay.js?token=${token}" defer data-web-inspect></script>`,
     handleOwn
   });
-  const port = await listenFree(server, startPort);
+  const port = await listenFree(server, startPort, target);
   const info = { port, token, pid: process.pid, target };
   writeFileSync(`${readyFile}.tmp`, JSON.stringify(info));
   renameSync(`${readyFile}.tmp`, readyFile);

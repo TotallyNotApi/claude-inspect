@@ -3,11 +3,13 @@ import { readFile } from 'node:fs/promises'
 import { timingSafeEqual } from 'node:crypto'
 import type { InstructionStatus, ProgressEvent, SourceLoc } from '../../plugin/hooks/lib/types.js'
 import type { InstructionStore } from './store.js'
+import { isLocalOrigin } from './server.js'
 
 const PREFIX = '/__web-inspect'
 const MAX_BODY = 1024 * 1024
 const KEEPALIVE_MS = 15_000
 const STATUSES: InstructionStatus[] = ['queued', 'sent', 'running', 'done', 'aborted', 'held']
+const ORPHANED_LABEL = 'Přerušeno – instrukce nedokončena'
 const KINDS = ['tool', 'waiting-permission', 'turn-done', 'turn-aborted', 'info']
 
 export type ApiOptions = {
@@ -113,6 +115,8 @@ export function createApi(
     if (path === '/overlay.js' && method === 'GET') return serveOverlay(res)
 
     if (!path.startsWith('/api/')) throw new HttpError(404, 'not found')
+    // Browsers always send Origin on cross-origin requests; only our own page may talk to the API.
+    if (!isLocalOrigin(req.headers.origin)) throw new HttpError(403, 'forbidden origin')
 
     const given = (req.headers['x-web-inspect-token'] as string | undefined) ?? url.searchParams.get('token') ?? undefined
     // Header is the rule; ?token= is accepted for SSE (EventSource cannot set headers).
@@ -138,6 +142,9 @@ export function createApi(
       case '/api/poll': {
         opts.onHeartbeat()
         const canTake = isObj(body) && body.canTake === true
+        // The mod only asks to take when it is idle, so anything still sent/running was orphaned
+        // (lost poll response, Claude Code restarted mid-turn): close it out before taking.
+        if (canTake) store.abortInFlight(ORPHANED_LABEL)
         return sendJson(res, 200, { instruction: canTake ? store.take() : null })
       }
       case '/api/status': {
@@ -197,26 +204,43 @@ export type WatchdogOptions = {
   graceMs?: number
   checkIntervalMs?: number
   onTimeout: () => void
+  /** Monotonic clock (ms). Default performance.now(). */
+  now?: () => number
 }
 
-/** Fires onTimeout once when no heartbeat arrives within heartbeatTimeoutMs (grace period after start). */
+/**
+ * Fires onTimeout once when no heartbeat arrives within heartbeatTimeoutMs (grace period after start).
+ * Ages are measured on a monotonic clock; when the wall clock jumps by more than two check
+ * intervals between checks (sleep/wake, a stalled event loop) the heartbeat age restarts, so a
+ * laptop waking up does not kill the proxy before the mod had a chance to poll.
+ */
 export function createWatchdog(opts: WatchdogOptions): { heartbeat(): void; stop(): void } {
   const timeout = opts.heartbeatTimeoutMs ?? 15_000
   const grace = opts.graceMs ?? 30_000
-  const start = Date.now()
+  const interval = opts.checkIntervalMs ?? 1000
+  const now = opts.now ?? (() => performance.now())
+  const start = now()
   let last: number | null = null
+  let lastWall = Date.now()
   let fired = false
   const timer = setInterval(() => {
+    const wall = Date.now()
+    const jumped = wall - lastWall > 2 * interval
+    lastWall = wall
+    if (jumped) {
+      last = now()
+      return
+    }
     const deadline = last === null ? start + grace : last + timeout
-    if (!fired && Date.now() >= deadline) {
+    if (!fired && now() >= deadline) {
       fired = true
       clearInterval(timer)
       opts.onTimeout()
     }
-  }, opts.checkIntervalMs ?? 1000)
+  }, interval)
   return {
     heartbeat() {
-      last = Date.now()
+      last = now()
     },
     stop() {
       clearInterval(timer)

@@ -11,7 +11,13 @@ import { parseArgs } from 'node:util'
 
 const READY_TIMEOUT_MS = 5000
 
+let readyFile = null
+
 function fail(message) {
+  if (readyFile) {
+    rmSync(readyFile, { force: true })
+    rmSync(`${readyFile}.tmp`, { force: true })
+  }
   process.stdout.write(JSON.stringify({ error: message }) + '\n')
   process.exit(1)
 }
@@ -34,7 +40,7 @@ if (values.port !== undefined && !/^\d+$/.test(values.port)) {
 }
 
 const here = dirname(fileURLToPath(import.meta.url))
-const readyFile = join(tmpdir(), `web-inspect-ready-${process.pid}-${randomBytes(4).toString('hex')}.json`)
+readyFile = join(tmpdir(), `web-inspect-ready-${process.pid}-${randomBytes(4).toString('hex')}.json`)
 const logTmp = join(tmpdir(), `web-inspect-launch-${process.pid}.log`)
 
 const args = [join(here, 'proxy.mjs'), '--target', String(target), '--cwd', values.cwd ?? process.cwd(), '--ready-file', readyFile]
@@ -92,8 +98,8 @@ while (Date.now() < deadline) {
   await new Promise((r) => setTimeout(r, 25))
 }
 
+const tail = logTail() // before the kill: a proxy that got as far as its handlers deletes the log
 try {
   process.kill(child.pid, 'SIGTERM')
 } catch {}
-const tail = logTail()
 fail(`proxy not ready after ${READY_TIMEOUT_MS} ms${tail ? `: ${tail}` : ''} (log: ${logPath})`)

@@ -10,7 +10,37 @@ export type ProxyOptions = {
   handleOwn: (req: http.IncomingMessage, res: http.ServerResponse) => boolean
 }
 
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+/** True when a Host header names this machine (localhost, 127.0.0.1 or [::1], any port). */
+export function isLocalHost(host: string | undefined): boolean {
+  if (!host || /[\s/@?#\\]/.test(host)) return false
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(`http://${host}`).hostname)
+  } catch {
+    return false
+  }
+}
+
+/** True when an Origin header is absent or names a local http(s) origin. */
+export function isLocalOrigin(origin: string | string[] | undefined): boolean {
+  if (origin === undefined) return true
+  if (typeof origin !== 'string') return false
+  try {
+    const u = new URL(origin)
+    return (u.protocol === 'http:' || u.protocol === 'https:') && LOCAL_HOSTNAMES.has(u.hostname)
+  } catch {
+    return false
+  }
+}
+
+const FORBIDDEN = 'web-inspect: only localhost Host is accepted'
+
 /**
+ * DNS-rebinding guard: a malicious site that rebinds its name to 127.0.0.1 would
+ * reach us with `Host: evil.example:<port>`. Only local Host headers are served,
+ * for proxied requests, own /__web-inspect paths and WebSocket upgrades alike.
+ *
  * Upstream host decision: we connect to `localhost` (not a literal 127.0.0.1)
  * so Node's happy-eyeballs (autoSelectFamily) tries both ::1 and 127.0.0.1;
  * dev servers (Vite, Next) bind just one of the families. The Host and Origin
@@ -32,7 +62,9 @@ export function createProxyServer(opts: ProxyOptions): http.Server {
 
   const rewrite = (proxyReq: http.ClientRequest, req: http.IncomingMessage) => {
     proxyReq.setHeader('host', upstreamHost)
-    if (req.headers.origin) proxyReq.setHeader('origin', upstreamOrigin)
+    // Only our own (local) origin is translated; a foreign one goes through unchanged so the dev
+    // server's own CSRF/WebSocket origin checks still see it.
+    if (req.headers.origin && isLocalOrigin(req.headers.origin)) proxyReq.setHeader('origin', upstreamOrigin)
   }
 
   proxy.on('proxyReq', (proxyReq, req) => {
@@ -83,12 +115,23 @@ export function createProxyServer(opts: ProxyOptions): http.Server {
   })
 
   const server = http.createServer((req, res) => {
+    if (!isLocalHost(req.headers.host)) {
+      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8', connection: 'close' })
+      res.end(FORBIDDEN)
+      return
+    }
     if (handleOwn(req, res)) return
     proxy.web(req, res)
   })
 
   server.on('upgrade', (req, socket, head) => {
     socket.on('error', () => socket.destroy())
+    if (!isLocalHost(req.headers.host)) {
+      socket.end(
+        `HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: ${Buffer.byteLength(FORBIDDEN)}\r\nconnection: close\r\n\r\n${FORBIDDEN}`,
+      )
+      return
+    }
     proxy.ws(req, socket, head)
   })
 

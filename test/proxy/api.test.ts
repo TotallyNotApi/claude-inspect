@@ -38,10 +38,10 @@ async function start(over: Partial<Parameters<typeof createApi>[1]> = {}) {
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
   servers.push(server)
   const port = (server.address() as AddressInfo).port
-  const call = async (method: string, path: string, body?: unknown, token: string | null = TOKEN) => {
+  const call = async (method: string, path: string, body?: unknown, token: string | null = TOKEN, extra: Record<string, string> = {}) => {
     const res = await fetch(`http://127.0.0.1:${port}${P}${path}`, {
       method,
-      headers: { 'content-type': 'application/json', ...(token ? { 'x-web-inspect-token': token } : {}) },
+      headers: { 'content-type': 'application/json', ...(token ? { 'x-web-inspect-token': token } : {}), ...extra },
       body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
     })
     const text = await res.text()
@@ -66,6 +66,22 @@ describe('api auth', () => {
     const { call } = await start()
     expect((await call('POST', '/api/poll', '{bad')).status).toBe(400)
     expect((await call('POST', '/api/instructions', 'x'.repeat(1024 * 1024 + 10))).status).toBe(413)
+  })
+})
+
+describe('api origin check', () => {
+  it('403 for a foreign Origin, even with a valid token', async () => {
+    const { call, store } = await start()
+    const r = await call('POST', '/api/instructions', { pageUrl: 'x', items: [item] }, TOKEN, { origin: 'http://evil.example:4000' })
+    expect(r.status).toBe(403)
+    expect(store.snapshot().queue).toHaveLength(0)
+    expect((await call('POST', '/api/poll', {}, TOKEN, { origin: 'null' })).status).toBe(403)
+  })
+  it('accepts a missing Origin and local origins', async () => {
+    const { call } = await start()
+    expect((await call('POST', '/api/poll', {})).status).toBe(200)
+    for (const origin of ['http://localhost:4000', 'http://127.0.0.1:4001', 'http://[::1]:4000'])
+      expect((await call('POST', '/api/poll', {}, TOKEN, { origin })).status, origin).toBe(200)
   })
 })
 
@@ -137,6 +153,32 @@ describe('instructions flow', () => {
     await call('POST', '/api/progress', { kind: 'info', label: 'x', at: 1 })
     expect(onHeartbeat).toHaveBeenCalledTimes(2)
     expect(store.snapshot().progress).toHaveLength(1)
+  })
+  it('poll canTake:true first aborts orphaned sent/running entries with an info event', async () => {
+    const { call, store } = await start()
+    const a = store.add('u', [item])
+    const b = store.add('u', [item])
+    const c = store.add('u', [item])
+    store.take() // a: sent
+    store.take() // b: sent
+    store.setStatus(b.id, 'running')
+    const r = await call('POST', '/api/poll', { canTake: true })
+    expect(r.json.instruction.id).toBe(c.id)
+    const st = Object.fromEntries(store.snapshot().queue.map((q) => [q.id, q.status]))
+    expect(st).toEqual({ [a.id]: 'aborted', [b.id]: 'aborted', [c.id]: 'sent' })
+    const info = store.snapshot().progress.filter((p) => p.kind === 'info')
+    expect(info.map((p) => [p.instructionId, p.label])).toEqual([
+      [a.id, 'Přerušeno – instrukce nedokončena'],
+      [b.id, 'Přerušeno – instrukce nedokončena'],
+    ])
+  })
+  it('poll canTake:false leaves sent/running entries alone', async () => {
+    const { call, store } = await start()
+    store.add('u', [item])
+    store.take()
+    await call('POST', '/api/poll', { canTake: false })
+    expect(store.snapshot().queue[0].status).toBe('sent')
+    expect(store.snapshot().progress).toHaveLength(0)
   })
   it('status: ok, 404 unknown', async () => {
     const { call } = await start()
@@ -224,6 +266,44 @@ describe('watchdog', () => {
       vi.advanceTimersByTime(29_500)
       expect(onTimeout).not.toHaveBeenCalled()
       vi.advanceTimersByTime(1_500)
+      expect(onTimeout).toHaveBeenCalledTimes(1)
+      w.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('a wall-clock jump (sleep/wake) gives a fresh grace instead of firing at once', () => {
+    vi.useFakeTimers()
+    try {
+      const onTimeout = vi.fn()
+      const w = createWatchdog({ onTimeout })
+      vi.advanceTimersByTime(5_000)
+      w.heartbeat()
+      vi.setSystemTime(Date.now() + 3_600_000) // laptop slept for an hour
+      vi.advanceTimersByTime(1_000)
+      expect(onTimeout).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(13_000)
+      expect(onTimeout).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(3_000)
+      expect(onTimeout).toHaveBeenCalledTimes(1)
+      w.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('measures heartbeat age on the monotonic clock', () => {
+    vi.useFakeTimers()
+    try {
+      let mono = 0
+      const onTimeout = vi.fn()
+      const w = createWatchdog({ onTimeout, now: () => mono })
+      w.heartbeat()
+      vi.advanceTimersByTime(1_000) // timers tick, but the monotonic clock stands still
+      mono = 14_000
+      vi.advanceTimersByTime(1_000)
+      expect(onTimeout).not.toHaveBeenCalled()
+      mono = 15_500
+      vi.advanceTimersByTime(1_000)
       expect(onTimeout).toHaveBeenCalledTimes(1)
       w.stop()
     } finally {

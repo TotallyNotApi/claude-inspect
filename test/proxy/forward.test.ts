@@ -165,3 +165,64 @@ describe('proxy forwarding', () => {
     expect(up.seen.hits).toBe(0)
   })
 })
+
+describe('DNS rebinding guard', () => {
+  it('rejects a foreign Host with 403 plain text and does not forward', async () => {
+    const up = await startUpstream()
+    const port = await startProxy(up.port)
+    const r = await get(port, '/json', { host: `evil.example:${port}` })
+    expect(r.status).toBe(403)
+    expect(r.headers['content-type']).toContain('text/plain')
+    expect(up.seen.hits).toBe(0)
+  })
+
+  it('rejects a foreign Host also for own /__web-inspect paths', async () => {
+    const up = await startUpstream()
+    let own = 0
+    const port = await startProxy(up.port, () => {
+      own++
+      return false
+    })
+    const r = await get(port, '/__web-inspect/overlay.js', { host: 'evil.example' })
+    expect(r.status).toBe(403)
+    expect(own).toBe(0)
+  })
+
+  it('accepts localhost, 127.0.0.1 and [::1] on any port', async () => {
+    const up = await startUpstream()
+    const port = await startProxy(up.port)
+    for (const host of [`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`, 'localhost', 'LOCALHOST:1']) {
+      const r = await get(port, '/json', { host })
+      expect(r.status, host).toBe(200)
+    }
+  })
+
+  it('rejects a missing or lookalike Host', async () => {
+    const up = await startUpstream()
+    const port = await startProxy(up.port)
+    for (const host of ['localhost.evil.example', '127.0.0.1.nip.io', 'evil.example@localhost']) {
+      const r = await get(port, '/json', { host })
+      expect(r.status, host).toBe(403)
+    }
+  })
+
+  it('rejects a WebSocket upgrade with a foreign Host', async () => {
+    const up = await startUpstream()
+    const port = await startProxy(up.port)
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/`, { headers: { host: `evil.example:${port}` } })
+    const status = await new Promise<number>((res, rej) => {
+      ws.on('unexpected-response', (_req, resp) => res(resp.statusCode!))
+      ws.on('open', () => res(101))
+      ws.on('error', rej)
+    })
+    expect(status).toBe(403)
+    expect(up.seen.hits).toBe(0)
+  })
+
+  it('passes a foreign Origin to the upstream unchanged (only local origins are rewritten)', async () => {
+    const up = await startUpstream()
+    const port = await startProxy(up.port)
+    await get(port, '/json', { origin: 'https://accounts.example' })
+    expect(up.seen.origin).toBe('https://accounts.example')
+  })
+})

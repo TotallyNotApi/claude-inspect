@@ -6,7 +6,8 @@
 process.noDeprecation = true
 
 import { randomBytes } from 'node:crypto'
-import { renameSync, writeFileSync } from 'node:fs'
+import { renameSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -29,9 +30,11 @@ function listen(server: import('node:http').Server, port: number): Promise<void>
   })
 }
 
-async function listenFree(server: import('node:http').Server, start: number): Promise<number> {
+async function listenFree(server: import('node:http').Server, start: number, target: number): Promise<number> {
   for (let i = 0; i < MAX_PORT_TRIES; i++) {
     const port = start + i
+    // A dev server bound to ::1 only leaves 127.0.0.1:<target> free; taking it would proxy to ourselves.
+    if (port === target) continue
     try {
       await listen(server, port)
       return port
@@ -66,10 +69,15 @@ async function main(): Promise<void> {
   const overlayJsPath = join(here, 'overlay.js') // build output sits next to proxy.mjs
 
   let server: import('node:http').Server
+  // launch.mjs names our stdout/stderr log after our pid; it is only needed when startup fails.
+  const logFile = join(tmpdir(), `web-inspect-${process.pid}.log`)
   const shutdown = () => {
     watchdog.stop()
     server.closeAllConnections()
     server.close()
+    try {
+      rmSync(logFile, { force: true })
+    } catch {}
     process.exit(0)
   }
   const watchdog = createWatchdog({ onTimeout: shutdown })
@@ -86,7 +94,7 @@ async function main(): Promise<void> {
     handleOwn,
   })
 
-  const port = await listenFree(server, startPort)
+  const port = await listenFree(server, startPort, target)
   const info: LaunchInfo = { port, token, pid: process.pid, target }
   // Atomic: the launcher polls this file, so it must never see a partial write.
   writeFileSync(`${readyFile}.tmp`, JSON.stringify(info))

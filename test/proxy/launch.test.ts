@@ -3,6 +3,9 @@ import http from 'node:http'
 import net from 'node:net'
 import { execFileSync, spawnSync } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
+import { existsSync, readdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { LaunchInfo } from '../../plugin/hooks/lib/types.js'
 
 const LAUNCH = 'plugin/server/launch.mjs'
@@ -116,6 +119,50 @@ describe('launch.mjs', () => {
     const info = JSON.parse(r.stdout.trim()) as LaunchInfo
     track(info)
     expect(info.port).toBe(base + 1)
+  })
+
+  it('never listens on the target port itself (dev server bound to ::1 only)', async () => {
+    const probe = net.createServer()
+    const free = await listen(probe)
+    await new Promise<void>((r) => probe.close(() => r()))
+    const r = launch(['--target', String(free), '--port', String(free)])
+    expect(r.status).toBe(0)
+    const info = JSON.parse(r.stdout.trim()) as LaunchInfo
+    track(info)
+    expect(info.port).not.toBe(free)
+    expect(info.port).toBe(free + 1)
+  })
+
+  it('deletes its log file on a clean shutdown', async () => {
+    const target = await upstream()
+    const r = launch(['--target', String(target), '--port', '4300'])
+    const info = JSON.parse(r.stdout.trim()) as LaunchInfo
+    track(info)
+    const log = join(tmpdir(), `web-inspect-${info.pid}.log`)
+    expect(existsSync(log)).toBe(true)
+    await new Promise<void>((res, rej) => {
+      const req = http.request(
+        { host: '127.0.0.1', port: info.port, path: '/__web-inspect/api/shutdown', method: 'POST', headers: { 'x-web-inspect-token': info.token } },
+        (resp) => {
+          resp.resume()
+          resp.on('end', () => res())
+        },
+      )
+      req.on('error', rej)
+      req.end()
+    })
+    const deadline = Date.now() + 2000
+    while (alive(info.pid) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50))
+    expect(alive(info.pid)).toBe(false)
+    expect(existsSync(log)).toBe(false)
+  })
+
+  it('leaves no ready file behind when the proxy fails to start', () => {
+    const r = launch(['--target', '3000', '--port', '99999'])
+    expect(r.status).toBe(1)
+    expect(JSON.parse(r.stdout.trim()).error).toMatch(/exited/)
+    const left = readdirSync(tmpdir()).filter((f) => f.startsWith(`web-inspect-ready-${r.pid}-`))
+    expect(left).toEqual([])
   })
 
   it.each([['abc'], ['0'], ['70000'], ['1.5']])('rejects invalid --target %s', (t) => {
