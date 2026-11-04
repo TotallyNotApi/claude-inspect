@@ -39,6 +39,8 @@ describe('texts', () => {
     expect(startText(info)).toBe('otevři http://localhost:4000 (proxy pro localhost:3000). Výběr v prohlížeči: Alt+C.')
     expect(statusText(info)).toBe('aktivní: http://localhost:4000 → :3000')
     expect(statusText(null)).toBe('neaktivní. Použij /inspect <port dev serveru>')
+    expect(statusText(null, true)).toBe('proxy neběží. Použij /inspect <port dev serveru>')
+    expect(statusText(info, true)).toBe('aktivní: http://localhost:4000 → :3000')
     expect(STOPPED_TEXT).toBe('vypnuto')
     expect(INVALID_TEXT).toBe('zadej port dev serveru, např. /inspect 3000')
     expect(startFailedText('x')).toBe('nepodařilo se spustit proxy (x). Potřebuješ Node 20+.')

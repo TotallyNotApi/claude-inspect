@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 const INFO = { port: 4000, token: 'tok', pid: 42, target: 3000 }
 
-type Opts = { launch?: any; throws?: string; fetchFails?: boolean; stored?: Record<string, unknown> }
+type Opts = { launch?: any; throws?: string; fetchFails?: boolean; fetchStatus?: number; stored?: Record<string, unknown> }
 function stubs(on: any, o: Opts = {}) {
   const runs: any[] = []
   const fetches: any[] = []
@@ -19,6 +19,7 @@ function stubs(on: any, o: Opts = {}) {
   on('http.fetch', ($: any, e: any) => {
     fetches.push(e)
     if (o.fetchFails) return { deny: 'ECONNREFUSED' }
+    if (o.fetchStatus) return { value: { status: o.fetchStatus, ok: false, headers: {}, text: '{"error":"unauthorized"}' } }
     return { value: { status: 200, ok: true, headers: {}, text: '{"ok":true}' } }
   })
   on('store.get', ($: any, e: any) => ({ value: stored[e.key] }))
@@ -145,4 +146,27 @@ test('session.start restores active from store', async ($: any, on: any) => {
   await boot($)
   expect((await run($, '')).text).toBe('aktivní: http://localhost:4000 → :3000')
   expect(S.statuses[S.statuses.length - 1].text).toBe('inspect → :4000')
+})
+
+test('session.start checks the restored proxy live with a non-taking poll', async ($: any, on: any) => {
+  const S = stubs(on, { stored: { 'proxy:sess1': INFO } })
+  await boot($)
+  expect(S.fetches.length).toBe(1)
+  expect(S.fetches[0].url).toBe('http://127.0.0.1:4000/__web-inspect/api/poll')
+  expect(JSON.parse(S.fetches[0].init.body)).toEqual({ canTake: false })
+})
+
+test('session.start drops a stored proxy that no longer answers', async ($: any, on: any) => {
+  const S = stubs(on, { stored: { 'proxy:sess1': INFO }, fetchFails: true })
+  await boot($)
+  expect((await run($, '')).text).toBe(NEG)
+  expect(S.stored['proxy:sess1']).toBeUndefined()
+  expect(S.statuses.every((x) => x.text === undefined)).toBe(true)
+})
+
+test('session.start drops a stored proxy that answers 401 (another proxy on the port)', async ($: any, on: any) => {
+  const S = stubs(on, { stored: { 'proxy:sess1': INFO }, fetchStatus: 401 })
+  await boot($)
+  expect((await run($, '')).text).toBe(NEG)
+  expect(S.stored['proxy:sess1']).toBeUndefined()
 })

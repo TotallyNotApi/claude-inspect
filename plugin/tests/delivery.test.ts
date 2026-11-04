@@ -17,6 +17,10 @@ type Opts = {
   // Instructions the proxy hands out to polls with canTake, in order.
   instructions?: Instruction[]
   pollFails?: boolean
+  // HTTP status the proxy answers polls with (non-2xx counts as a failure).
+  pollStatus?: number
+  // Poll fails for the call numbers in this set (1-based).
+  failPollsAt?: Set<number>
   // Mock milliseconds a poll takes to answer.
   pollDelayMs?: number
 }
@@ -26,6 +30,10 @@ function stubs(on: any, o: Opts = {}) {
   const posts: { path: string; body: any }[] = []
   const submits: any[] = []
   const typed: any[] = []
+  const uiStatus: any[] = []
+  const toasts: any[] = []
+  const logs: any[] = []
+  let pollCount = 0
   const toHand = [...(o.instructions ?? [I])]
   const results = o.submitResults ?? [undefined]
   let n = 0
@@ -38,7 +46,9 @@ function stubs(on: any, o: Opts = {}) {
     posts.push({ path, body })
     if (path === 'poll') {
       if (o.pollDelayMs) await clock.sleep(o.pollDelayMs)
-      if (o.pollFails) return { deny: 'ECONNREFUSED' }
+      pollCount++
+      if (o.pollFails || o.failPollsAt?.has(pollCount)) return { deny: 'ECONNREFUSED' }
+      if (o.pollStatus) return { value: { status: o.pollStatus, ok: false, headers: {}, text: '{"error":"unauthorized"}' } }
       const instruction = body.canTake ? toHand.shift() ?? null : null
       return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ instruction }) } }
     }
@@ -48,7 +58,9 @@ function stubs(on: any, o: Opts = {}) {
   on('store.get', ($: any, e: any) => ({ value: stored[e.key] }))
   on('store.set', ($: any, e: any) => { stored[e.key] = e.value; return { value: undefined } })
   on('store.delete', ($: any, e: any) => { delete stored[e.key]; return { value: undefined } })
-  on('ui.status', () => ({ value: undefined }))
+  on('ui.status', ($: any, e: any) => { uiStatus.push(e); return { value: undefined } })
+  on('ui.toast', ($: any, e: any) => { toasts.push(e); return { value: undefined } })
+  on('ui.log', ($: any, e: any) => { logs.push(e); return { value: undefined } })
   on('command.register', () => ({ value: undefined }))
   on('session.start', () => ({ cwd: '/work' }))
   on('session.end', () => ({ sessionId: 'sess1' }))
@@ -66,7 +78,7 @@ function stubs(on: any, o: Opts = {}) {
   const statuses = () => posts.filter((p) => p.path === 'status').map((p) => p.body.status)
   const progress = () => posts.filter((p) => p.path === 'progress').map((p) => p.body)
   const polls = () => posts.filter((p) => p.path === 'poll').map((p) => p.body.canTake)
-  return { clock, posts, submits, typed, statuses, progress, polls }
+  return { clock, posts, submits, typed, statuses, progress, polls, uiStatus, toasts, logs, stored }
 }
 
 async function start($: any) {
@@ -192,6 +204,65 @@ test('proxy down: failed polls keep the queue idle without throwing', async ($: 
   expect(S.submits.length).toBe(0)
 })
 
+const LOST_STATUS = 'inspect: proxy spadla – /inspect 3000'
+const LOST_TEXT = 'proxy neběží. Použij /inspect <port dev serveru>'
+
+test('proxy death: 8 failed polls in a row stop polling, clear state and tell the user once', async ($: any, on: any) => {
+  const S = stubs(on, { pollFails: true })
+  await start($)
+  for (let k = 0; k < 7; k++) await S.clock.advance(500)
+  await S.clock.settle()
+  expect(S.toasts.length + S.logs.length).toBe(0)
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('aktivní: http://localhost:4000 → :3000')
+  await S.clock.advance(500)
+  await S.clock.settle()
+  expect(S.polls().length).toBe(8)
+  expect(S.uiStatus[S.uiStatus.length - 1].text).toBe(LOST_STATUS)
+  expect(S.stored['proxy:sess1']).toBeUndefined()
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe(LOST_TEXT)
+  expect(S.toasts.length + S.logs.length).toBe(1)
+  for (let k = 0; k < 5; k++) await S.clock.advance(500)
+  await S.clock.settle()
+  expect(S.polls().length).toBe(8)
+  expect(S.toasts.length + S.logs.length).toBe(1)
+  // Starting again clears the lost state.
+  await $.command.run({ command: 'inspect', args: '3000' })
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('aktivní: http://localhost:4000 → :3000')
+})
+
+test('proxy death: non-2xx answers (401 after a restart) count as failures too', async ($: any, on: any) => {
+  const S = stubs(on, { pollStatus: 401 })
+  await start($)
+  for (let k = 0; k < 8; k++) await S.clock.advance(500)
+  await S.clock.settle()
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe(LOST_TEXT)
+  expect(S.uiStatus[S.uiStatus.length - 1].text).toBe(LOST_STATUS)
+})
+
+test('proxy death: heartbeat failures while running count, and a success resets the count', async ($: any, on: any) => {
+  // Poll 1 takes the instruction; polls 2-7 fail, 8 succeeds, 9-15 fail (7 in a row), 16 is the 8th.
+  const S = stubs(on, { failPollsAt: new Set([2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16]) })
+  await start($)
+  for (let k = 0; k < 15; k++) await S.clock.advance(500)
+  await S.clock.settle()
+  expect(S.polls()[0]).toBe(true)
+  expect(S.polls().slice(1).every((x) => x === false)).toBe(true)
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('aktivní: http://localhost:4000 → :3000')
+  await S.clock.advance(500)
+  await S.clock.settle()
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe(LOST_TEXT)
+})
+
+test('stop after a proxy death reports plain inactive again', async ($: any, on: any) => {
+  const S = stubs(on, { pollFails: true })
+  await start($)
+  for (let k = 0; k < 8; k++) await S.clock.advance(500)
+  await S.clock.settle()
+  expect((await $.command.run({ command: 'inspect', args: 'stop' })).text).toBe('vypnuto')
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('neaktivní. Použij /inspect <port dev serveru>')
+  expect(S.uiStatus[S.uiStatus.length - 1].text).toBeUndefined()
+})
+
 test('stop cancels polling', async ($: any, on: any) => {
   const S = stubs(on)
   await start($)
@@ -214,6 +285,8 @@ test('polling resumes after a reload when the proxy is restored from the store',
     return { value: { status: 200, ok: true, headers: {}, text: '{"instruction":null}' } }
   })
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
+  // One live check before restoring, then regular polling.
+  expect(polls).toEqual([{ canTake: false }])
   await clock.advance(500)
-  expect(polls).toEqual([{ canTake: true }])
+  expect(polls).toEqual([{ canTake: false }, { canTake: true }])
 })

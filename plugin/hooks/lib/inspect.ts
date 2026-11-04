@@ -36,8 +36,13 @@ export const INVALID_TEXT = 'zadej port dev serveru, např. /inspect 3000'
 
 export const startText = (i: LaunchInfo) =>
   `otevři http://localhost:${i.port} (proxy pro localhost:${i.target}). Výběr v prohlížeči: Alt+C.`
-export const statusText = (i: LaunchInfo | null) =>
-  i ? `aktivní: http://localhost:${i.port} → :${i.target}` : 'neaktivní. Použij /inspect <port dev serveru>'
+export const LOST_TEXT = 'proxy neběží. Použij /inspect <port dev serveru>'
+/** `lost`: the proxy stopped answering (it was not stopped with /inspect stop). */
+export const statusText = (i: LaunchInfo | null, lost = false) =>
+  i ? `aktivní: http://localhost:${i.port} → :${i.target}` : lost ? LOST_TEXT : 'neaktivní. Použij /inspect <port dev serveru>'
 export const startFailedText = (reason: string) =>
   `nepodařilo se spustit proxy (${reason}). Potřebuješ Node 20+.`
 export const statusLine = (i: LaunchInfo) => `inspect → :${i.port}`
+export const lostStatusLine = (i: LaunchInfo) => `inspect: proxy spadla – /inspect ${i.target}`
+export const lostNotice = (i: LaunchInfo) =>
+  `proxy na http://localhost:${i.port} přestala odpovídat. Spusť ji znovu: /inspect ${i.target}`
