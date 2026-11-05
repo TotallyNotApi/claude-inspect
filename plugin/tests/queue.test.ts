@@ -59,7 +59,7 @@ test('submit dropped after an interruption holds the instruction', () => {
       ],
     })
   }
-  expect(PAUSED_LABEL).toBe('Přerušeno – pokračuj zprávou v terminálu')
+  expect(PAUSED_LABEL).toBe('Interrupted. Send a message in the terminal to continue')
 })
 
 test('turn complete finishes or aborts the running instruction', () => {
@@ -74,7 +74,7 @@ test('turn complete finishes or aborts the running instruction', () => {
     state: { phase: 'paused' },
     effects: [
       { type: 'status', id: 'i1', status: 'aborted' },
-      { type: 'progress', ev: { kind: 'turn-aborted', label: 'Přerušeno', instructionId: 'i1' } },
+      { type: 'progress', ev: { kind: 'turn-aborted', label: 'Interrupted', instructionId: 'i1' } },
     ],
   })
 })
@@ -104,7 +104,7 @@ test('submit dropped for another reason gives the instruction up', () => {
     state: { phase: 'idle' },
     effects: [
       { type: 'status', id: 'i1', status: 'aborted' },
-      { type: 'progress', ev: { kind: 'info', label: 'Nedoručeno: the run reached its --max-turns limit', instructionId: 'i1' } },
+      { type: 'progress', ev: { kind: 'info', label: 'Not delivered: the run reached its --max-turns limit', instructionId: 'i1' } },
     ],
   })
 })

@@ -37,8 +37,8 @@ async function boot($: any) {
 }
 const run = ($: any, args: string) => $.command.run({ command: 'inspect', args })
 
-const START_TEXT = 'otevři http://localhost:4000 (proxy pro localhost:3000). Výběr v prohlížeči: Alt+C.'
-const NEG = 'neaktivní. Použij /inspect <port dev serveru>'
+const START_TEXT = 'open http://localhost:4000 (proxy for localhost:3000). Pick elements with ⌘C on macOS, Alt+C elsewhere.'
+const NEG = 'inactive. Use /inspect <dev server port>'
 
 test('status when inactive', async ($: any, on: any) => {
   stubs(on)
@@ -49,7 +49,7 @@ test('status when inactive', async ($: any, on: any) => {
 test('invalid port', async ($: any, on: any) => {
   const S = stubs(on)
   await boot($)
-  expect((await run($, 'abc')).text).toBe('zadej port dev serveru, např. /inspect 3000')
+  expect((await run($, 'abc')).text).toBe('give the dev server port, e.g. /inspect 3000')
   expect(S.runs.length).toBe(0)
 })
 
@@ -66,9 +66,9 @@ test('start, status, stop', async ($: any, on: any) => {
   expect(S.statuses[S.statuses.length - 1].text).toBe('inspect → :4000')
   expect((S.stored['proxy:sess1'] as any).token).toBe('tok')
 
-  expect((await run($, '')).text).toBe('aktivní: http://localhost:4000 → :3000')
+  expect((await run($, '')).text).toBe('active: http://localhost:4000 → :3000')
 
-  expect((await run($, 'stop')).text).toBe('vypnuto')
+  expect((await run($, 'stop')).text).toBe('stopped')
   const f = S.fetches[S.fetches.length - 1]
   expect(f.url).toBe('http://127.0.0.1:4000/__web-inspect/api/shutdown')
   expect(f.init.method).toBe('POST')
@@ -92,7 +92,7 @@ test('start while running stops the old one first', async ($: any, on: any) => {
 test('stop with nothing active', async ($: any, on: any) => {
   const S = stubs(on)
   await boot($)
-  expect((await run($, 'stop')).text).toBe('vypnuto')
+  expect((await run($, 'stop')).text).toBe('stopped')
   expect(S.fetches.length).toBe(0)
 })
 
@@ -100,7 +100,7 @@ test('stop clears state even when shutdown fetch rejects', async ($: any, on: an
   const S = stubs(on, { fetchFails: true })
   await boot($)
   await run($, '3000')
-  expect((await run($, 'stop')).text).toBe('vypnuto')
+  expect((await run($, 'stop')).text).toBe('stopped')
   expect(S.stored['proxy:sess1']).toBeUndefined()
   expect(S.statuses[S.statuses.length - 1].text).toBeUndefined()
   expect((await run($, '')).text).toBe(NEG)
@@ -109,14 +109,14 @@ test('stop clears state even when shutdown fetch rejects', async ($: any, on: an
 test('launcher error json', async ($: any, on: any) => {
   stubs(on, { launch: { exitCode: 1, stdout: '{"error":"port busy"}\n', stderr: '' } })
   await boot($)
-  expect((await run($, '3000')).text).toBe('nepodařilo se spustit proxy (port busy). Potřebuješ Node 20+.')
+  expect((await run($, '3000')).text).toBe('couldn’t start the proxy (port busy). Node 20+ is required.')
 })
 
 test('launcher garbage output', async ($: any, on: any) => {
   const S = stubs(on, { launch: { exitCode: 0, stdout: 'not json\n', stderr: '' } })
   await boot($)
   expect((await run($, '3000')).text).toBe(
-    'nepodařilo se spustit proxy (neplatný výstup launcheru). Potřebuješ Node 20+.',
+    'couldn’t start the proxy (invalid launcher output). Node 20+ is required.',
   )
   expect((await run($, '')).text).toBe(NEG)
   expect(S.stored['proxy:sess1']).toBeUndefined()
@@ -127,7 +127,7 @@ test('node missing (process.run rejects)', async ($: any, on: any) => {
   await boot($)
   const t = (await run($, '3000')).text
   // The kit turns the { deny } stub into a rejection whose message is prefixed 'web-inspect: $.process.run: '.
-  expect(t).toBe('nepodařilo se spustit proxy (web-inspect: $.process.run: spawn node ENOENT). Potřebuješ Node 20+.')
+  expect(t).toBe('couldn’t start the proxy (web-inspect: $.process.run: spawn node ENOENT). Node 20+ is required.')
 })
 
 test('session.end fires shutdown and forgets the store key', async ($: any, on: any) => {
@@ -144,7 +144,7 @@ test('session.end fires shutdown and forgets the store key', async ($: any, on: 
 test('session.start restores active from store', async ($: any, on: any) => {
   const S = stubs(on, { stored: { 'proxy:sess1': INFO } })
   await boot($)
-  expect((await run($, '')).text).toBe('aktivní: http://localhost:4000 → :3000')
+  expect((await run($, '')).text).toBe('active: http://localhost:4000 → :3000')
   expect(S.statuses[S.statuses.length - 1].text).toBe('inspect → :4000')
 })
 

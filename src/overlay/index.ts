@@ -6,11 +6,12 @@ import { createBatch } from './batch.ts'
 import { createBubble } from './bubble.ts'
 import { buildElementContext } from './context.ts'
 import { createPicker } from './picker.ts'
+import { icon } from './icons.ts'
 import { createPill } from './pill.ts'
 import { reactInfo } from './react.ts'
 import { CSS } from './styles.ts'
 
-/** Text-entry targets (page fields and the bubble's own textarea) keep Alt+C for typing. */
+/** Text-entry targets (page fields and the bubble's own textarea) keep the shortcut keys for typing/copying. */
 function isEditable(t: EventTarget | undefined): boolean {
   const el = t as HTMLElement | undefined
   if (!el || typeof el.tagName !== 'string') return false
@@ -21,13 +22,23 @@ function isEditable(t: EventTarget | undefined): boolean {
   return !!ce && ce.getAttribute('contenteditable')?.toLowerCase() !== 'false'
 }
 
-const TOGGLE_OFF = 'Výběr vypnut'
-const TOGGLE_ON = 'Výběr zapnut'
+export const TOGGLE_OFF = 'Inspect'
+export const TOGGLE_ON = 'Inspecting'
 
-export function mountOverlay(opts: { token: string; doc?: Document }): { destroy(): void } {
+/** macOS (and iPadOS with a keyboard) gets ⌘C; everything else Alt+C. */
+export function isMacPlatform(nav: Navigator): boolean {
+  const n = nav as Navigator & { userAgentData?: { platform?: string } }
+  return /mac|iphone|ipad|ipod/i.test(n.userAgentData?.platform || n.platform || n.userAgent || '')
+}
+
+export const shortcutLabel = (mac: boolean) => (mac ? '⌘C' : 'Alt+C')
+
+export function mountOverlay(opts: { token: string; doc?: Document; mac?: boolean }): { destroy(): void } {
   const doc = opts.doc ?? document
   const win = doc.defaultView ?? window
   const api = createApi(opts.token)
+  const mac = opts.mac ?? isMacPlatform(win.navigator)
+  const shortcut = shortcutLabel(mac)
 
   const host = doc.createElement('div')
   host.setAttribute('data-web-inspect-host', '')
@@ -85,17 +96,30 @@ export function mountOverlay(opts: { token: string; doc?: Document }): { destroy
     picker.setActive(on)
     if (!on) bubble.close()
     toggle.setAttribute('aria-pressed', String(on))
-    toggle.title = on ? 'Vypnout výběr elementu (Alt+C)' : 'Zapnout výběr elementu (Alt+C)'
-    const kbd = doc.createElement('b')
-    kbd.textContent = 'Alt+C'
-    toggle.replaceChildren(`◎ ${on ? TOGGLE_ON : TOGGLE_OFF} · `, kbd)
+    toggle.title = on ? `Stop picking elements (${shortcut})` : `Pick an element on the page (${shortcut})`
+    const label = doc.createElement('span')
+    label.textContent = on ? TOGGLE_ON : TOGGLE_OFF
+    const kbd = doc.createElement('kbd')
+    kbd.textContent = shortcut
+    toggle.replaceChildren(icon(doc, 'target'), label, kbd)
   }
   setPicking(false)
   toggle.addEventListener('click', () => setPicking(!picker.active))
 
+  /** ⌘C only toggles while nothing is selected, so copying text keeps working. */
+  const hasSelection = () => {
+    const s = win.getSelection?.()
+    return !!s && !s.isCollapsed && s.toString() !== ''
+  }
+  const isToggleKey = (e: KeyboardEvent) => {
+    // event.code: on macOS ⌥C produces key 'ç'. ⌥C stays a silent fallback on macOS.
+    if (e.code !== 'KeyC' || e.ctrlKey || e.shiftKey) return false
+    if (e.altKey && !e.metaKey) return true
+    return mac && e.metaKey && !e.altKey && !hasSelection()
+  }
+
   const onKey = (e: KeyboardEvent) => {
-    // event.code: on macOS Alt+C produces key 'ç'.
-    if (e.code === 'KeyC' && e.altKey && !e.ctrlKey && !e.metaKey) {
+    if (isToggleKey(e)) {
       if (e.repeat || isEditable(e.composedPath()[0])) return
       e.preventDefault()
       setPicking(!picker.active)

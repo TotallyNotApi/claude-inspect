@@ -28,21 +28,21 @@ export function parseLaunchOutput(stdout: string, stderr = ''): LaunchResult {
       return { ok: true, info: { port: j.port, token: j.token, pid: j.pid, target: j.target } }
     }
   } catch {}
-  return { ok: false, reason: (stderr ?? '').trim() || 'neplatný výstup launcheru' }
+  return { ok: false, reason: (stderr ?? '').trim() || 'invalid launcher output' }
 }
 
-export const STOPPED_TEXT = 'vypnuto'
-export const INVALID_TEXT = 'zadej port dev serveru, např. /inspect 3000'
+export const STOPPED_TEXT = 'stopped'
+export const INVALID_TEXT = 'give the dev server port, e.g. /inspect 3000'
 
 export const startText = (i: LaunchInfo) =>
-  `otevři http://localhost:${i.port} (proxy pro localhost:${i.target}). Výběr v prohlížeči: Alt+C.`
-export const LOST_TEXT = 'proxy neběží. Použij /inspect <port dev serveru>'
+  `open http://localhost:${i.port} (proxy for localhost:${i.target}). Pick elements with ⌘C on macOS, Alt+C elsewhere.`
+export const LOST_TEXT = 'proxy isn’t running. Use /inspect <dev server port>'
 /** `lost`: the proxy stopped answering (it was not stopped with /inspect stop). */
 export const statusText = (i: LaunchInfo | null, lost = false) =>
-  i ? `aktivní: http://localhost:${i.port} → :${i.target}` : lost ? LOST_TEXT : 'neaktivní. Použij /inspect <port dev serveru>'
+  i ? `active: http://localhost:${i.port} → :${i.target}` : lost ? LOST_TEXT : 'inactive. Use /inspect <dev server port>'
 export const startFailedText = (reason: string) =>
-  `nepodařilo se spustit proxy (${reason}). Potřebuješ Node 20+.`
+  `couldn’t start the proxy (${reason}). Node 20+ is required.`
 export const statusLine = (i: LaunchInfo) => `inspect → :${i.port}`
-export const lostStatusLine = (i: LaunchInfo) => `inspect: proxy spadla – /inspect ${i.target}`
+export const lostStatusLine = (i: LaunchInfo) => `inspect: proxy died, /inspect ${i.target}`
 export const lostNotice = (i: LaunchInfo) =>
-  `proxy na http://localhost:${i.port} přestala odpovídat. Spusť ji znovu: /inspect ${i.target}`
+  `the proxy at http://localhost:${i.port} stopped responding. Start it again: /inspect ${i.target}`

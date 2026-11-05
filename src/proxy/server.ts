@@ -108,7 +108,7 @@ export function createProxyServer(opts: ProxyOptions): http.Server {
       if (!res.headersSent) {
         res.writeHead(502, { 'content-type': 'text/html; charset=utf-8' })
       }
-      res.end(`<!doctype html><meta charset="utf-8"><p>web-inspect: dev server na portu ${target} neodpovídá</p>`)
+      res.end(`<!doctype html><meta charset="utf-8"><p>web-inspect: the dev server on port ${target} isn’t responding</p>`)
     } else {
       ;(res as Duplex).destroy()
     }

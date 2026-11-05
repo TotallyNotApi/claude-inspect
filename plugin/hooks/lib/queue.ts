@@ -19,9 +19,9 @@ export type Effect =
   | { type: 'progress'; ev: Omit<ProgressEvent, 'at'> }
 export type StepResult = { state: QueueState; effects: Effect[] }
 
-export const PAUSED_LABEL = 'Přerušeno – pokračuj zprávou v terminálu'
+export const PAUSED_LABEL = 'Interrupted. Send a message in the terminal to continue'
 export const DONE_LABEL = 'Hotovo'
-export const ABORTED_LABEL = 'Přerušeno'
+export const ABORTED_LABEL = 'Interrupted'
 
 // Reasons after which Claude Code refuses plugin input until the user types something.
 const HOLD_REASONS = ['the session was stopped and nobody has sent input since', 'was removed from the queue before it ran']
@@ -72,7 +72,7 @@ export function step(state: QueueState, ev: QueueEvent): StepResult {
         state: { phase: 'idle' },
         effects: [
           { type: 'status', id: current.id, status: 'aborted' },
-          { type: 'progress', ev: { kind: 'info', label: `Nedoručeno: ${ev.reason}`, instructionId: current.id } },
+          { type: 'progress', ev: { kind: 'info', label: `Not delivered: ${ev.reason}`, instructionId: current.id } },
         ],
       }
 

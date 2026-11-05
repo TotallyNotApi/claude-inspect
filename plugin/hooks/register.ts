@@ -54,7 +54,7 @@ async function apiTo($: any, info: LaunchInfo, path: string, body: unknown): Pro
     body: JSON.stringify(body ?? {}),
   })
   if (!r || typeof r.status !== 'number' || r.status < 200 || r.status > 299)
-    throw new Error(`web-inspect: proxy odpověděla HTTP ${r?.status}`)
+    throw new Error(`web-inspect: proxy answered HTTP ${r?.status}`)
   try {
     return JSON.parse(r.text)
   } catch {
@@ -76,7 +76,7 @@ let postChain: Promise<unknown> = Promise.resolve()
 
 // POST to the running proxy's API. Throws if no proxy is active.
 async function api($: any, path: string, body: unknown): Promise<any> {
-  if (!active) throw new Error('web-inspect: proxy není aktivní')
+  if (!active) throw new Error('web-inspect: proxy isn’t active')
   return apiTo($, active, path, body)
 }
 
@@ -300,7 +300,7 @@ export function register(on: any) {
   on('session.start', async ($: any, e: any, next: any) => {
     await $.command.register({
       name: 'inspect',
-      description: 'web-inspect: výběr elementů na dev webu',
+      description: 'web-inspect: pick elements on your dev site',
       argumentHint: '[port|stop]',
       immediate: true,
     })
@@ -338,7 +338,7 @@ export function register(on: any) {
     const r = await next(e)
     try {
       if (e.agentId === undefined && r?.decision === 'ask')
-        reportProgress($, 'waiting-permission', 'Čeká na schválení v terminálu')
+        reportProgress($, 'waiting-permission', 'Waiting for approval in the terminal')
     } catch {}
     return r
   }).catch(progressCatch)

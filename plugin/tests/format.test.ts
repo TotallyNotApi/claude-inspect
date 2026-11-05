@@ -19,17 +19,17 @@ test('formats a single delete instruction', () => {
     id: '1', createdAt: 0, pageUrl: 'http://localhost:4000/pricing',
     items: [{ instruction: quickActionText('delete'), element: badge }],
   }
-  expect(formatInstruction(i)).toBe(`[web-inspect] Instrukce z prohlížeče, stránka /pricing
+  expect(formatInstruction(i)).toBe(`[web-inspect] Instruction from the browser, page /pricing
 
-Smaž tento element.
+Delete this element.
 
 Element:
 - text: "Nejoblíbenější"
 - tag: <span class="badge">
-- sekce: "Ceník"
-- komponenta: PlanCard ← Pricing (src/components/PlanCard.tsx:8)
-- HTML cesta: main > section#pricing > div.plans > div.plan:nth-child(2) > span.badge
-- selektor: #pricing .plan:nth-child(2) > .badge
+- section: "Ceník"
+- component: PlanCard ← Pricing (src/components/PlanCard.tsx:8)
+- DOM path: main > section#pricing > div.plans > div.plan:nth-child(2) > span.badge
+- selector: #pricing .plan:nth-child(2) > .badge
 - html: <span class="badge">Nejoblíbenější</span>`)
 })
 
@@ -42,7 +42,7 @@ test('formats a batch with numbered elements', () => {
     ],
   }
   const out = formatInstruction(i)
-  expect(out.startsWith('[web-inspect] Dávka 2 úprav z prohlížeče, stránka /\n\n1) První\n- text: "Nejoblíbenější"')).toBe(true)
+  expect(out.startsWith('[web-inspect] Batch of 2 changes from the browser, page /\n\n1) První\n- text: "Nejoblíbenější"')).toBe(true)
   expect(out).toContain('\n\n2) Druhá\n- text: "B"')
 })
 
@@ -52,13 +52,13 @@ test('omits missing fields', () => {
   expect(none).not.toContain('komponenta:')
   expect(none).not.toContain('sekce:')
   expect(none).not.toContain('zdroj:')
-  expect(none).toContain('stránka /a?b=1')
+  expect(none).toContain('page /a?b=1')
   const src = formatInstruction({ id: '4', createdAt: 0, pageUrl: 'http://x/', items: [{ instruction: 'x', element: { ...base, source: { file: 'src/x.tsx', line: 3 } } }] })
-  expect(src).toContain('- zdroj: src/x.tsx:3')
+  expect(src).toContain('- source: src/x.tsx:3')
   expect(src).not.toContain('komponenta:')
 })
 
 test('quickActionText', () => {
-  expect(quickActionText('delete')).toBe('Smaž tento element.')
-  expect(quickActionText('improve')).toBe('Vylepši tento element (vzhled, texty, přístupnost) v duchu zbytku stránky.')
+  expect(quickActionText('delete')).toBe('Delete this element.')
+  expect(quickActionText('improve')).toBe('Improve this element (visuals, copy, accessibility) in the style of the rest of the page.')
 })

@@ -3479,7 +3479,7 @@ function createProxyServer(opts) {
       if (!res.headersSent) {
         res.writeHead(502, { "content-type": "text/html; charset=utf-8" });
       }
-      res.end(`<!doctype html><meta charset="utf-8"><p>web-inspect: dev server na portu ${target} neodpov\xEDd\xE1</p>`);
+      res.end(`<!doctype html><meta charset="utf-8"><p>web-inspect: the dev server on port ${target} isn\u2019t responding</p>`);
     } else {
       ;
       res.destroy();
@@ -3518,7 +3518,7 @@ var PREFIX = "/__web-inspect";
 var MAX_BODY = 1024 * 1024;
 var KEEPALIVE_MS = 15e3;
 var STATUSES = ["queued", "sent", "running", "done", "aborted", "held"];
-var ORPHANED_LABEL = "P\u0159eru\u0161eno \u2013 instrukce nedokon\u010Dena";
+var ORPHANED_LABEL = "Interrupted. The instruction didn\u2019t finish";
 var KINDS = ["tool", "waiting-permission", "turn-done", "turn-aborted", "info"];
 var HttpError = class extends Error {
   constructor(status, message) {

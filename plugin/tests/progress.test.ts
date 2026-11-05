@@ -8,26 +8,26 @@ const I = {
 }
 
 test('toolLabel: Read', () => {
-  expect(toolLabel('Read', { file_path: '/x/src/Pricing.tsx' })).toBe('čte Pricing.tsx')
-  expect(toolLabel('Read', { file_path: 'C:\\x\\Pricing.tsx' })).toBe('čte Pricing.tsx')
+  expect(toolLabel('Read', { file_path: '/x/src/Pricing.tsx' })).toBe('reading Pricing.tsx')
+  expect(toolLabel('Read', { file_path: 'C:\\x\\Pricing.tsx' })).toBe('reading Pricing.tsx')
 })
 test('toolLabel: edits', () => {
   for (const t of ['Edit', 'Write', 'MultiEdit'])
-    expect(toolLabel(t, { file_path: '/x/a/B.tsx' })).toBe('upravuje B.tsx')
-  expect(toolLabel('NotebookEdit', { notebook_path: '/x/n.ipynb' })).toBe('upravuje n.ipynb')
+    expect(toolLabel(t, { file_path: '/x/a/B.tsx' })).toBe('editing B.tsx')
+  expect(toolLabel('NotebookEdit', { notebook_path: '/x/n.ipynb' })).toBe('editing n.ipynb')
 })
 test('toolLabel: Bash truncates to 40 chars', () => {
-  expect(toolLabel('Bash', { command: 'npm test' })).toBe('spouští npm test')
-  expect(toolLabel('Bash', { command: 'a'.repeat(60) })).toBe('spouští ' + 'a'.repeat(40))
+  expect(toolLabel('Bash', { command: 'npm test' })).toBe('running npm test')
+  expect(toolLabel('Bash', { command: 'a'.repeat(60) })).toBe('running ' + 'a'.repeat(40))
 })
 test('toolLabel: search, agents, others, missing input', () => {
-  expect(toolLabel('Grep', { pattern: 'foo' })).toBe('hledá foo')
-  expect(toolLabel('Glob', { pattern: '**/*.ts' })).toBe('hledá **/*.ts')
-  expect(toolLabel('Agent', {})).toBe('spouští subagenta')
-  expect(toolLabel('Task', {})).toBe('spouští subagenta')
-  expect(toolLabel('WebFetch', {})).toBe('používá WebFetch')
-  expect(toolLabel('Read', {})).toBe('používá Read')
-  expect(toolLabel('Bash', {})).toBe('používá Bash')
+  expect(toolLabel('Grep', { pattern: 'foo' })).toBe('searching foo')
+  expect(toolLabel('Glob', { pattern: '**/*.ts' })).toBe('searching **/*.ts')
+  expect(toolLabel('Agent', {})).toBe('running a subagent')
+  expect(toolLabel('Task', {})).toBe('running a subagent')
+  expect(toolLabel('WebFetch', {})).toBe('using WebFetch')
+  expect(toolLabel('Read', {})).toBe('using Read')
+  expect(toolLabel('Bash', {})).toBe('using Bash')
 })
 
 type Opts = {
@@ -88,7 +88,7 @@ test('tool.call posts a tool progress event while running', async ($: any, on: a
   const r = await $.tool.call({ tool: 'Edit', file_path: '/x/src/Pricing.tsx' })
   await clock.settle()
   expect(r).toEqual({ result: 'ok' })
-  expect(S.progress().map((p) => [p.kind, p.label, p.instructionId])).toEqual([['tool', 'upravuje Pricing.tsx', 'i1']])
+  expect(S.progress().map((p) => [p.kind, p.label, p.instructionId])).toEqual([['tool', 'editing Pricing.tsx', 'i1']])
 })
 
 test('tool.call posts nothing when no proxy is active', async ($: any, on: any) => {
@@ -183,7 +183,7 @@ test('tool.check ask reports waiting-permission and returns the decision', async
   await clock.settle()
   expect(r.decision).toBe('ask')
   expect(S.progress().map((p) => [p.kind, p.label, p.instructionId])).toEqual([
-    ['waiting-permission', 'Čeká na schválení v terminálu', 'i1'],
+    ['waiting-permission', 'Waiting for approval in the terminal', 'i1'],
   ])
 })
 

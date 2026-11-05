@@ -121,7 +121,7 @@ test('a dropped submit holds the instruction until the user types', async ($: an
   await S.clock.settle()
   expect(S.submits.length).toBe(1)
   expect(S.statuses()).toEqual(['sent', 'held'])
-  expect(S.progress().map((x) => x.label)).toEqual(['Přerušeno – pokračuj zprávou v terminálu'])
+  expect(S.progress().map((x) => x.label)).toEqual(['Interrupted. Send a message in the terminal to continue'])
   await S.clock.advance(500)
   expect(S.polls()).toEqual([true, false])
   // The user's own message resumes delivery of the same text.
@@ -163,7 +163,7 @@ test('an aborted turn is not resent and waits for user input', async ($: any, on
   await S.clock.settle()
   await complete($, S, true)
   expect(S.statuses()).toEqual(['sent', 'running', 'aborted'])
-  expect(S.progress().map((x) => [x.kind, x.label])).toEqual([['turn-aborted', 'Přerušeno']])
+  expect(S.progress().map((x) => [x.kind, x.label])).toEqual([['turn-aborted', 'Interrupted']])
   await S.clock.advance(500)
   expect(S.polls()).toEqual([true, false])
   expect(S.submits.length).toBe(1)
@@ -204,8 +204,8 @@ test('proxy down: failed polls keep the queue idle without throwing', async ($: 
   expect(S.submits.length).toBe(0)
 })
 
-const LOST_STATUS = 'inspect: proxy spadla – /inspect 3000'
-const LOST_TEXT = 'proxy neběží. Použij /inspect <port dev serveru>'
+const LOST_STATUS = 'inspect: proxy died, /inspect 3000'
+const LOST_TEXT = 'proxy isn’t running. Use /inspect <dev server port>'
 
 test('proxy death: 8 failed polls in a row stop polling, clear state and tell the user once', async ($: any, on: any) => {
   const S = stubs(on, { pollFails: true })
@@ -213,7 +213,7 @@ test('proxy death: 8 failed polls in a row stop polling, clear state and tell th
   for (let k = 0; k < 7; k++) await S.clock.advance(500)
   await S.clock.settle()
   expect(S.toasts.length + S.logs.length).toBe(0)
-  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('aktivní: http://localhost:4000 → :3000')
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('active: http://localhost:4000 → :3000')
   await S.clock.advance(500)
   await S.clock.settle()
   expect(S.polls().length).toBe(8)
@@ -227,7 +227,7 @@ test('proxy death: 8 failed polls in a row stop polling, clear state and tell th
   expect(S.toasts.length + S.logs.length).toBe(1)
   // Starting again clears the lost state.
   await $.command.run({ command: 'inspect', args: '3000' })
-  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('aktivní: http://localhost:4000 → :3000')
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('active: http://localhost:4000 → :3000')
 })
 
 test('proxy death: non-2xx answers (401 after a restart) count as failures too', async ($: any, on: any) => {
@@ -247,7 +247,7 @@ test('proxy death: heartbeat failures while running count, and a success resets 
   await S.clock.settle()
   expect(S.polls()[0]).toBe(true)
   expect(S.polls().slice(1).every((x) => x === false)).toBe(true)
-  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('aktivní: http://localhost:4000 → :3000')
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('active: http://localhost:4000 → :3000')
   await S.clock.advance(500)
   await S.clock.settle()
   expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe(LOST_TEXT)
@@ -258,8 +258,8 @@ test('stop after a proxy death reports plain inactive again', async ($: any, on:
   await start($)
   for (let k = 0; k < 8; k++) await S.clock.advance(500)
   await S.clock.settle()
-  expect((await $.command.run({ command: 'inspect', args: 'stop' })).text).toBe('vypnuto')
-  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('neaktivní. Použij /inspect <port dev serveru>')
+  expect((await $.command.run({ command: 'inspect', args: 'stop' })).text).toBe('stopped')
+  expect((await $.command.run({ command: 'inspect', args: '' })).text).toBe('inactive. Use /inspect <dev server port>')
   expect(S.uiStatus[S.uiStatus.length - 1].text).toBeUndefined()
 })
 

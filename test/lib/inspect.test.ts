@@ -29,20 +29,20 @@ describe('parseLaunchOutput', () => {
   })
   it('handles garbage', () => {
     expect(parseLaunchOutput('nope', 'stderr text')).toEqual({ ok: false, reason: 'stderr text' })
-    expect(parseLaunchOutput('', '')).toEqual({ ok: false, reason: 'neplatný výstup launcheru' })
+    expect(parseLaunchOutput('', '')).toEqual({ ok: false, reason: 'invalid launcher output' })
   })
 })
 
 describe('texts', () => {
   const info = { port: 4000, token: 't', pid: 1, target: 3000 }
   it('are verbatim', () => {
-    expect(startText(info)).toBe('otevři http://localhost:4000 (proxy pro localhost:3000). Výběr v prohlížeči: Alt+C.')
-    expect(statusText(info)).toBe('aktivní: http://localhost:4000 → :3000')
-    expect(statusText(null)).toBe('neaktivní. Použij /inspect <port dev serveru>')
-    expect(statusText(null, true)).toBe('proxy neběží. Použij /inspect <port dev serveru>')
-    expect(statusText(info, true)).toBe('aktivní: http://localhost:4000 → :3000')
-    expect(STOPPED_TEXT).toBe('vypnuto')
-    expect(INVALID_TEXT).toBe('zadej port dev serveru, např. /inspect 3000')
-    expect(startFailedText('x')).toBe('nepodařilo se spustit proxy (x). Potřebuješ Node 20+.')
+    expect(startText(info)).toBe('open http://localhost:4000 (proxy for localhost:3000). Pick elements with ⌘C on macOS, Alt+C elsewhere.')
+    expect(statusText(info)).toBe('active: http://localhost:4000 → :3000')
+    expect(statusText(null)).toBe('inactive. Use /inspect <dev server port>')
+    expect(statusText(null, true)).toBe('proxy isn’t running. Use /inspect <dev server port>')
+    expect(statusText(info, true)).toBe('active: http://localhost:4000 → :3000')
+    expect(STOPPED_TEXT).toBe('stopped')
+    expect(INVALID_TEXT).toBe('give the dev server port, e.g. /inspect 3000')
+    expect(startFailedText('x')).toBe('couldn’t start the proxy (x). Node 20+ is required.')
   })
 })

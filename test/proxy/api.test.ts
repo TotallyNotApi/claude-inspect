@@ -168,8 +168,8 @@ describe('instructions flow', () => {
     expect(st).toEqual({ [a.id]: 'aborted', [b.id]: 'aborted', [c.id]: 'sent' })
     const info = store.snapshot().progress.filter((p) => p.kind === 'info')
     expect(info.map((p) => [p.instructionId, p.label])).toEqual([
-      [a.id, 'Přerušeno – instrukce nedokončena'],
-      [b.id, 'Přerušeno – instrukce nedokončena'],
+      [a.id, 'Interrupted. The instruction didn’t finish'],
+      [b.id, 'Interrupted. The instruction didn’t finish'],
     ])
   })
   it('poll canTake:false leaves sent/running entries alone', async () => {

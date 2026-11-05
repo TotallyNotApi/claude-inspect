@@ -2,7 +2,7 @@ import type { InstructionItem } from '../../plugin/hooks/lib/types.ts'
 import { placeBox } from './picker.ts'
 
 export const BATCH_KEY = 'web-inspect:batch'
-const SEND_FAILED = 'Nepodařilo se odeslat – běží proxy?'
+import { SEND_FAILED } from './bubble.ts'
 
 function storage(win: Window): Storage | null {
   try {
@@ -59,7 +59,7 @@ export function createBatch(opts: {
   const sendBtn = doc.createElement('button')
   sendBtn.type = 'button'
   sendBtn.className = 'send'
-  sendBtn.textContent = 'Odeslat'
+  sendBtn.textContent = 'Send'
   const err = doc.createElement('span')
   err.className = 'err'
   err.setAttribute('role', 'alert')
@@ -103,8 +103,8 @@ export function createBatch(opts: {
       const marker = doc.createElement('button')
       marker.type = 'button'
       marker.className = 'marker'
-      marker.setAttribute('aria-label', `Položka ${n + 1}: ${item.instruction} – odebrat z dávky`)
-      marker.title = `${item.instruction}\n× odebrat z dávky`
+      marker.setAttribute('aria-label', `Item ${n + 1}: ${item.instruction}. Remove from batch`)
+      marker.title = `${item.instruction}\n× remove from batch`
       const num = doc.createElement('span')
       num.className = 'n'
       num.textContent = String(n + 1)
@@ -117,7 +117,7 @@ export function createBatch(opts: {
       return { box, marker }
     })
     if (items.length) {
-      count.textContent = `Dávka (${items.length})`
+      count.textContent = `Batch (${items.length})`
       if (!row.isConnected) dock.prepend(row)
     } else row.remove()
     reposition()

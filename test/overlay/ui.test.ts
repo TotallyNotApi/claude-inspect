@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mountOverlay } from '../../src/overlay/index.ts'
+import { isMacPlatform, mountOverlay } from '../../src/overlay/index.ts'
 import type { Snapshot } from '../../plugin/hooks/lib/types.ts'
 
 const FIXTURE = `
@@ -48,7 +48,12 @@ const root = () => host().shadowRoot!
 const $ = (sel: string) => root().querySelector(sel) as HTMLElement | null
 const badge = () => document.querySelector('span.badge') as HTMLElement
 const button = (text: string) =>
-  Array.from(root().querySelectorAll('button')).find((b) => b.textContent!.includes(text)) as HTMLButtonElement | undefined
+  Array.from(root().querySelectorAll('button')).find(
+    (b) => b.getAttribute('aria-label') === text || b.textContent!.includes(text),
+  ) as HTMLButtonElement | undefined
+const toggleOn = () => $('.toggle[aria-pressed="true"]') as HTMLButtonElement | null
+const toggleOff = () => $('.toggle[aria-pressed="false"]') as HTMLButtonElement | null
+const batchSend = () => $('.batch .send') as HTMLButtonElement
 const instructionCalls = () => calls.filter((c) => c.url.endsWith('/api/instructions'))
 
 function key(code: string, init: KeyboardEventInit = {}, target: EventTarget = window) {
@@ -89,7 +94,8 @@ describe('mount', () => {
   it('creates a shadow host with max z-index and the toggle', () => {
     expect(host()).toBeTruthy()
     expect(host().style.zIndex).toBe('2147483647')
-    expect(button('Výběr vypnut')!.textContent).toBe('◎ Výběr vypnut · Alt+C')
+    expect(toggleOff()!.textContent).toBe('InspectAlt+C')
+    expect($('.toggle .icon svg')).toBeTruthy()
   })
   it('moves the toggle chip out of the way of the Next.js dev indicator (nextjs-portal), also when it appears later', async () => {
     const toggle = () => $('.toggle')!
@@ -123,7 +129,7 @@ describe('picker', () => {
     badge().addEventListener('click', spy)
     badge().onclick = spy
     altC()
-    expect(button('Výběr zapnut')!.textContent).toBe('◎ Výběr zapnut · Alt+C')
+    expect(toggleOn()!.textContent).toBe('InspectingAlt+C')
     click(badge())
     expect(spy).not.toHaveBeenCalled()
   })
@@ -143,24 +149,30 @@ describe('picker', () => {
     pick(badge())
     const bubble = $('.bubble')!
     expect(bubble).toBeTruthy()
-    for (const t of ['✏️ Upravit', '🗑 Smazat', '✨ Vylepšit', '＋ Do dávky']) expect(button(t)).toBeTruthy()
+    for (const t of ['Edit', 'Delete', 'Improve', 'Add to batch', 'Send']) {
+      expect(button(t), t).toBeTruthy()
+      expect(button(t)!.dataset.tip, t).toBeTruthy()
+    }
+    expect(bubble.querySelector('.el-name')!.textContent).toBe('span.badge')
     const field = bubble.querySelector('textarea')!
-    expect(field.getAttribute('placeholder')).toBe('Vlastní instrukce… (⏎ pošle hned)')
+    expect(field.getAttribute('placeholder')).toBe('Describe the change…')
+    expect(field.getAttribute('rows')).toBe('3')
+    expect(button('Send')!.disabled).toBe(true)
   })
   it('clicking an overlay element does not select it', () => {
     altC()
-    click(button('Výběr zapnut')!)
+    click(toggleOn()!)
     expect($('.bubble')).toBeNull()
     // and the toggle still works as a button: it turned picking off
-    expect(button('Výběr vypnut')).toBeTruthy()
+    expect(toggleOff()).toBeTruthy()
   })
   it('Esc closes the bubble, the second Esc turns picking off', () => {
     pick(badge())
     esc()
     expect($('.bubble')).toBeNull()
-    expect(button('Výběr zapnut')).toBeTruthy()
+    expect(toggleOn()).toBeTruthy()
     esc()
-    expect(button('Výběr vypnut')).toBeTruthy()
+    expect(toggleOff()).toBeTruthy()
   })
   it('Alt+C typed into a page field, textarea, select or contenteditable does not toggle picking', () => {
     const input = document.createElement('input')
@@ -173,19 +185,19 @@ describe('picker', () => {
     document.body.append(input, area, select, editable)
     for (const t of [input, area, select, editable, inner]) {
       key('KeyC', { altKey: true, key: 'ç' }, t)
-      expect(button('Výběr vypnut'), t.tagName).toBeTruthy()
+      expect(toggleOff(), t.tagName).toBeTruthy()
     }
   })
   it("Alt+C in the bubble's own textarea does not toggle picking", () => {
     pick(badge())
     const field = $('.bubble textarea')!
     key('KeyC', { altKey: true, key: 'ç' }, field)
-    expect(button('Výběr zapnut')).toBeTruthy()
+    expect(toggleOn()).toBeTruthy()
     expect($('.bubble')).toBeTruthy()
   })
   it('a repeated Alt+C keydown (key held) is ignored', () => {
     key('KeyC', { altKey: true, key: 'ç', repeat: true })
-    expect(button('Výběr vypnut')).toBeTruthy()
+    expect(toggleOff()).toBeTruthy()
   })
   it('Esc during IME composition does nothing', () => {
     pick(badge())
@@ -195,9 +207,9 @@ describe('picker', () => {
 })
 
 describe('bubble actions', () => {
-  it('🗑 Smazat sends the delete instruction with element context', async () => {
+  it('Delete sends the delete instruction with element context', async () => {
     pick(badge())
-    button('🗑 Smazat')!.click()
+    button('Delete')!.click()
     await vi.waitFor(() => expect(instructionCalls()).toHaveLength(1))
     const c = instructionCalls()[0]
     expect(c.url).toBe('/__web-inspect/api/instructions')
@@ -205,24 +217,24 @@ describe('bubble actions', () => {
     expect(c.headers['content-type']).toBe('application/json')
     expect(c.body.pageUrl).toBe(location.href)
     expect(c.body.items).toHaveLength(1)
-    expect(c.body.items[0].instruction).toBe('Smaž tento element.')
+    expect(c.body.items[0].instruction).toBe('Delete this element.')
     expect(c.body.items[0].element.domPath).toBe('main > section#pricing > div.plans > div.plan:nth-child(2) > span.badge')
     expect(c.body.items[0].element.components).toEqual([])
     await vi.waitFor(() => expect($('.bubble')).toBeNull())
-    expect(button('Výběr zapnut')).toBeTruthy()
+    expect(toggleOn()).toBeTruthy()
   })
-  it('✏️ Upravit prefills "Uprav: " and focuses the field', () => {
+  it('Edit prefills "Change this: " and focuses the field', () => {
     pick(badge())
-    button('✏️ Upravit')!.click()
+    button('Edit')!.click()
     const field = $('.bubble textarea') as HTMLTextAreaElement
-    expect(field.value).toBe('Uprav: ')
+    expect(field.value).toBe('Change this: ')
     expect(root().activeElement).toBe(field)
   })
-  it('✨ Vylepšit prefills the improve text', () => {
+  it('Improve prefills the improve text', () => {
     pick(badge())
-    button('✨ Vylepšit')!.click()
+    button('Improve')!.click()
     expect(($('.bubble textarea') as HTMLTextAreaElement).value).toBe(
-      'Vylepši tento element (vzhled, texty, přístupnost) v duchu zbytku stránky.',
+      'Improve this element (visuals, copy, accessibility) in the style of the rest of the page.',
     )
   })
   it('Enter sends the custom text, Shift+Enter does not', async () => {
@@ -246,22 +258,22 @@ describe('bubble actions', () => {
 })
 
 describe('batch', () => {
-  it('two ＋ Do dávky → storage has 2 items, pill shows Dávka (2) · Odeslat, sending posts once', async () => {
+  it('two Add to batch → storage has 2 items, pill shows Batch (2) · Send, sending posts once', async () => {
     pick(badge())
     ;($('.bubble textarea') as HTMLTextAreaElement).value = 'Zvětši'
-    button('＋ Do dávky')!.click()
+    button('Add to batch')!.click()
     await vi.waitFor(() => expect(JSON.parse(sessionStorage.getItem('web-inspect:batch') ?? '[]')).toHaveLength(1))
     click(document.querySelector('h2')!)
-    button('＋ Do dávky')!.click()
+    button('Add to batch')!.click()
     await vi.waitFor(() => expect(JSON.parse(sessionStorage.getItem('web-inspect:batch') ?? '[]')).toHaveLength(2))
     const stored = JSON.parse(sessionStorage.getItem('web-inspect:batch')!)
     expect(stored[0].instruction).toBe('Zvětši')
-    expect(stored[1].instruction).toBe('Uprav dle potřeby.')
-    expect($('.batch')!.textContent).toContain('Dávka (2) · Odeslat')
+    expect(stored[1].instruction).toBe('Adjust as needed.')
+    expect($('.batch')!.textContent).toContain('Batch (2) · Send')
     expect(root().querySelectorAll('.marker')).toHaveLength(2)
     expect(instructionCalls()).toHaveLength(0)
 
-    button('Odeslat')!.click()
+    batchSend().click()
     await vi.waitFor(() => expect(instructionCalls()).toHaveLength(1))
     expect(instructionCalls()[0].body.items).toHaveLength(2)
     await vi.waitFor(() => expect(JSON.parse(sessionStorage.getItem('web-inspect:batch') ?? '[]')).toHaveLength(0))
@@ -270,11 +282,11 @@ describe('batch', () => {
   })
   it('restores the batch from sessionStorage and × on a marker removes an item', async () => {
     pick(badge())
-    button('＋ Do dávky')!.click()
+    button('Add to batch')!.click()
     await vi.waitFor(() => expect(JSON.parse(sessionStorage.getItem('web-inspect:batch') ?? '[]')).toHaveLength(1))
     overlay.destroy()
     overlay = mountOverlay({ token: 'tok' })
-    expect($('.batch')!.textContent).toContain('Dávka (1) · Odeslat')
+    expect($('.batch')!.textContent).toContain('Batch (1) · Send')
     const marker = root().querySelector('.marker') as HTMLButtonElement
     expect(marker.textContent).toContain('1')
     marker.click()
@@ -283,15 +295,15 @@ describe('batch', () => {
   })
   it('a failed batch send shows a visible inline error, cleared by a successful retry', async () => {
     pick(badge())
-    button('＋ Do dávky')!.click()
+    button('Add to batch')!.click()
     await vi.waitFor(() => expect($('.batch')).toBeTruthy())
     expect($('.batch .err')?.hidden ?? true).toBe(true)
     fetchMock.mockImplementationOnce(async () => new Response('{}', { status: 500 }))
-    button('Odeslat')!.click()
+    batchSend().click()
     await vi.waitFor(() => expect($('.batch .err')!.hidden).toBe(false))
-    expect($('.batch .err')!.textContent).toBe('Nepodařilo se odeslat – běží proxy?')
+    expect($('.batch .err')!.textContent).toBe('Couldn’t send. Is the proxy running?')
     expect($('.batch .err')!.getAttribute('role')).toBe('alert')
-    button('Odeslat')!.click()
+    batchSend().click()
     await vi.waitFor(() => expect($('.batch')).toBeNull())
   })
 })
@@ -305,38 +317,38 @@ describe('progress pill', () => {
   it('running + tool label shows Claude: <label>…', () => {
     es().emitSnapshot({
       queue: [{ id: 'a', status: 'running', summary: 'Zvětši' }],
-      progress: [{ kind: 'tool', label: 'upravuje Pricing.tsx', instructionId: 'a', at: 1 }],
+      progress: [{ kind: 'tool', label: 'editing Pricing.tsx', instructionId: 'a', at: 1 }],
     })
-    expect($('.pill')!.textContent).toContain('Claude: upravuje Pricing.tsx…')
+    expect($('.pill')!.textContent).toContain('Claude: editing Pricing.tsx…')
   })
   it('waiting-permission, queued, done', () => {
     es().emitSnapshot({
       queue: [{ id: 'a', status: 'running', summary: 'x' }],
-      progress: [{ kind: 'waiting-permission', label: 'Čeká na schválení v terminálu', instructionId: 'a', at: 1 }],
+      progress: [{ kind: 'waiting-permission', label: 'Waiting for approval in the terminal', instructionId: 'a', at: 1 }],
     })
-    expect($('.pill-line')!.textContent).toBe('Čeká na schválení v terminálu')
+    expect($('.pill-line')!.textContent).toBe('Waiting for approval in the terminal')
     es().emitSnapshot({ queue: [{ id: 'b', status: 'queued', summary: 'x' }, { id: 'c', status: 'queued', summary: 'y' }], progress: [] })
-    expect($('.pill-line')!.textContent).toBe('Ve frontě: 2')
+    expect($('.pill-line')!.textContent).toBe('Queued: 2')
     es().emitSnapshot({ queue: [{ id: 'b', status: 'done', summary: 'x' }], progress: [] })
-    expect($('.pill-line')!.textContent).toBe('Hotovo')
+    expect($('.pill-line')!.textContent).toBe('Done')
   })
-  it('aborted → expanded pill has Poslat znovu which POSTs /api/resend', async () => {
+  it('aborted → expanded pill has Send again which POSTs /api/resend', async () => {
     es().emitSnapshot({
       queue: [{ id: 'a', status: 'aborted', summary: 'Zvětši' }],
-      progress: [{ kind: 'turn-aborted', label: 'Přerušeno', instructionId: 'a', at: 1 }],
+      progress: [{ kind: 'turn-aborted', label: 'Interrupted', instructionId: 'a', at: 1 }],
     })
-    expect($('.pill-line')!.textContent).toBe('Přerušeno')
-    button('Přerušeno')!.click()
-    expect($('.pill')!.textContent).toContain('Pokračuj zprávou v terminálu')
-    button('Poslat znovu')!.click()
+    expect($('.pill-line')!.textContent).toBe('Interrupted')
+    button('Interrupted')!.click()
+    expect($('.pill')!.textContent).toContain('Send a message in the terminal to continue')
+    button('Send again')!.click()
     await vi.waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/resend'))).toBe(true))
     expect(calls.find((c) => c.url.endsWith('/api/resend'))!.body).toEqual({ id: 'a' })
   })
   it('a non-2xx resend is swallowed', async () => {
     fetchMock.mockImplementation(async () => new Response('{}', { status: 409 }))
     es().emitSnapshot({ queue: [{ id: 'a', status: 'aborted', summary: 'x' }], progress: [] })
-    button('Přerušeno')!.click()
-    button('Poslat znovu')!.click()
+    button('Interrupted')!.click()
+    button('Send again')!.click()
     await new Promise((r) => setTimeout(r, 20))
     expect($('.pill')).toBeTruthy()
   })
@@ -347,24 +359,24 @@ describe('progress pill', () => {
         { id: 'new', status: 'running', summary: 'y' },
       ],
       progress: [
-        { kind: 'tool', label: 'čte Old.tsx', instructionId: 'old', at: 1 },
-        { kind: 'tool', label: 'upravuje New.tsx', instructionId: 'new', at: 2 },
+        { kind: 'tool', label: 'reading Old.tsx', instructionId: 'old', at: 1 },
+        { kind: 'tool', label: 'editing New.tsx', instructionId: 'new', at: 2 },
       ],
     })
-    expect($('.pill-line')!.textContent).toBe('Claude: upravuje New.tsx…')
+    expect($('.pill-line')!.textContent).toBe('Claude: editing New.tsx…')
   })
-  it("a fresh instruction without tool events shows Claude: pracuje…, not the previous one's tool", () => {
+  it("a fresh instruction without tool events shows Claude: working…, not the previous one's tool", () => {
     es().emitSnapshot({
       queue: [
         { id: 'a', status: 'done', summary: 'x' },
         { id: 'b', status: 'running', summary: 'y' },
       ],
       progress: [
-        { kind: 'tool', label: 'upravuje Pricing.tsx', instructionId: 'a', at: 1 },
-        { kind: 'turn-done', label: 'Hotovo', instructionId: 'a', at: 2 },
+        { kind: 'tool', label: 'editing Pricing.tsx', instructionId: 'a', at: 1 },
+        { kind: 'turn-done', label: 'Done', instructionId: 'a', at: 2 },
       ],
     })
-    expect($('.pill-line')!.textContent).toBe('Claude: pracuje…')
+    expect($('.pill-line')!.textContent).toBe('Claude: working…')
   })
   it('after an abort, queued entries show the continue-in-terminal hint', () => {
     es().emitSnapshot({
@@ -372,9 +384,9 @@ describe('progress pill', () => {
         { id: 'a', status: 'aborted', summary: 'x' },
         { id: 'b', status: 'queued', summary: 'y' },
       ],
-      progress: [{ kind: 'turn-aborted', label: 'Přerušeno', instructionId: 'a', at: 1 }],
+      progress: [{ kind: 'turn-aborted', label: 'Interrupted', instructionId: 'a', at: 1 }],
     })
-    expect($('.pill-line')!.textContent).toBe('Ve frontě – pokračuj zprávou v terminálu')
+    expect($('.pill-line')!.textContent).toBe('Queued. Send a message in the terminal to continue')
   })
   it('a held entry (mod paused) with queued entries shows the hint; resend only on aborted', () => {
     es().emitSnapshot({
@@ -382,14 +394,14 @@ describe('progress pill', () => {
         { id: 'a', status: 'held', summary: 'x' },
         { id: 'b', status: 'queued', summary: 'y' },
       ],
-      progress: [{ kind: 'info', label: 'Přerušeno – pokračuj zprávou v terminálu', instructionId: 'a', at: 1 }],
+      progress: [{ kind: 'info', label: 'Interrupted. Send a message in the terminal to continue', instructionId: 'a', at: 1 }],
     })
-    expect($('.pill-line')!.textContent).toBe('Ve frontě – pokračuj zprávou v terminálu')
+    expect($('.pill-line')!.textContent).toBe('Queued. Send a message in the terminal to continue')
     $('.pill-head')!.click()
-    expect(button('Poslat znovu')).toBeUndefined()
-    expect($('.q .hint')!.textContent).toBe('Pokračuj zprávou v terminálu')
+    expect(button('Send again')).toBeUndefined()
+    expect($('.q .hint')!.textContent).toBe('Send a message in the terminal to continue')
   })
-  it('queued after a done turn, or after a proxy-side orphan abort, is plain Ve frontě: N', () => {
+  it('queued after a done turn, or after a proxy-side orphan abort, is plain Queued: N', () => {
     es().emitSnapshot({
       queue: [
         { id: 'a', status: 'aborted', summary: 'x' },
@@ -397,25 +409,25 @@ describe('progress pill', () => {
         { id: 'c', status: 'queued', summary: 'y' },
       ],
       progress: [
-        { kind: 'turn-aborted', label: 'Přerušeno', instructionId: 'a', at: 1 },
-        { kind: 'turn-done', label: 'Hotovo', instructionId: 'b', at: 2 },
+        { kind: 'turn-aborted', label: 'Interrupted', instructionId: 'a', at: 1 },
+        { kind: 'turn-done', label: 'Done', instructionId: 'b', at: 2 },
       ],
     })
-    expect($('.pill-line')!.textContent).toBe('Ve frontě: 1')
+    expect($('.pill-line')!.textContent).toBe('Queued: 1')
     es().emitSnapshot({
       queue: [
         { id: 'a', status: 'aborted', summary: 'x' },
         { id: 'c', status: 'queued', summary: 'y' },
       ],
-      progress: [{ kind: 'info', label: 'Přerušeno – instrukce nedokončena', instructionId: 'a', at: 1 }],
+      progress: [{ kind: 'info', label: 'Interrupted. The instruction didn’t finish', instructionId: 'a', at: 1 }],
     })
-    expect($('.pill-line')!.textContent).toBe('Ve frontě: 1')
+    expect($('.pill-line')!.textContent).toBe('Queued: 1')
   })
-  it('SSE error shows proxy neběží', () => {
+  it('SSE error shows proxy isn’t running', () => {
     es().onerror?.(new Event('error'))
-    expect($('.pill-line')!.textContent).toBe('web-inspect: proxy neběží')
+    expect($('.pill-line')!.textContent).toBe('web-inspect: proxy isn’t running')
     es().emitSnapshot({ queue: [{ id: 'b', status: 'done', summary: 'x' }], progress: [] })
-    expect($('.pill-line')!.textContent).toBe('Hotovo')
+    expect($('.pill-line')!.textContent).toBe('Done')
   })
 })
 
@@ -453,7 +465,7 @@ describe('react info', () => {
     })
     attach(badge(), { type: 'span', return: { type: named('PlanCard'), return: null }, _debugStack: stack('http://localhost:4000/src/PlanCard.tsx') })
     pick(badge())
-    button('🗑 Smazat')!.click()
+    button('Delete')!.click()
     await vi.waitFor(() => expect(instructionCalls()).toHaveLength(1))
     expect(calls.find((c) => c.url.endsWith('/api/resolve-source'))!.body).toEqual({
       url: 'http://localhost:4000/src/PlanCard.tsx',
@@ -473,7 +485,7 @@ describe('react info', () => {
     })
     attach(badge(), { type: 'span', return: { type: named('PlanCard'), return: null }, _debugStack: stack('http://localhost:4000/src/PlanCard.tsx') })
     pick(badge())
-    button('🗑 Smazat')!.click()
+    button('Delete')!.click()
     await vi.waitFor(() => expect(instructionCalls()).toHaveLength(1))
     expect(instructionCalls()[0].body.items[0].element).not.toHaveProperty('source')
   })
@@ -494,7 +506,7 @@ describe('react info', () => {
     badge().dispatchEvent(new MouseEvent('mousemove', { bubbles: true, composed: true }))
     expect($('.hover-label')!.textContent).toBe('span.badge · PlanCard (PlanCard.tsx)')
     click(badge())
-    button('🗑 Smazat')!.click()
+    button('Delete')!.click()
     await vi.waitFor(() => expect(instructionCalls()).toHaveLength(1))
     expect(calls.find((c) => c.url.endsWith('/api/resolve-source'))!.body).toEqual({ url: rscFrame, line: 12, column: 97 })
     expect(instructionCalls()[0].body.items[0].element.components).toEqual(['PlanCard'])
@@ -502,7 +514,7 @@ describe('react info', () => {
 
     resolved = null // proxy could not map it → keep the approximate source
     click(badge()) // picking is still on
-    button('🗑 Smazat')!.click()
+    button('Delete')!.click()
     await vi.waitFor(() => expect(instructionCalls()).toHaveLength(2))
     expect(instructionCalls()[1].body.items[0].element.source).toEqual({ file: 'components/PlanCard.tsx', line: 12, column: 97 })
   })
@@ -510,8 +522,96 @@ describe('react info', () => {
   it('a failed send keeps the bubble open with an error', async () => {
     fetchMock.mockImplementation(async () => new Response('{}', { status: 500 }))
     pick(badge())
-    button('🗑 Smazat')!.click()
+    button('Delete')!.click()
     await vi.waitFor(() => expect($('.bubble .err')!.hidden).toBe(false))
     expect($('.bubble')).toBeTruthy()
+  })
+})
+
+describe('macOS shortcut', () => {
+  const cmdC = (target: EventTarget = window) => key('KeyC', { metaKey: true, key: 'c' }, target)
+  beforeEach(() => {
+    overlay.destroy()
+    overlay = mountOverlay({ token: 'tok', mac: true })
+  })
+  it('shows ⌘C and ⌘C toggles picking', () => {
+    expect(toggleOff()!.textContent).toBe('Inspect⌘C')
+    expect(toggleOff()!.title).toContain('⌘C')
+    cmdC()
+    expect(toggleOn()!.textContent).toBe('Inspecting⌘C')
+    cmdC()
+    expect(toggleOff()).toBeTruthy()
+  })
+  it('⌥C still works as a fallback', () => {
+    key('KeyC', { altKey: true, key: 'ç' })
+    expect(toggleOn()).toBeTruthy()
+  })
+  it('⌘C with selected page text is left to copy', () => {
+    const range = document.createRange()
+    range.selectNodeContents(badge())
+    window.getSelection()!.removeAllRanges()
+    window.getSelection()!.addRange(range)
+    cmdC()
+    expect(toggleOff()).toBeTruthy()
+    window.getSelection()!.removeAllRanges()
+  })
+  it('⌘C inside a page field or the bubble is left to copy', () => {
+    const input = document.createElement('input')
+    document.body.append(input)
+    cmdC(input)
+    expect(toggleOff()).toBeTruthy()
+    pick(badge())
+    cmdC($('.bubble textarea')!)
+    expect(toggleOn()).toBeTruthy()
+    expect($('.bubble')).toBeTruthy()
+  })
+  it('⌘⇧C and ⌃C are ignored', () => {
+    key('KeyC', { metaKey: true, shiftKey: true, key: 'c' })
+    key('KeyC', { ctrlKey: true, key: 'c' })
+    expect(toggleOff()).toBeTruthy()
+  })
+})
+
+describe('non-mac shortcut', () => {
+  it('⌘C/Win+C does not toggle; Alt+C does', () => {
+    key('KeyC', { metaKey: true, key: 'c' })
+    expect(toggleOff()).toBeTruthy()
+    altC()
+    expect(toggleOn()).toBeTruthy()
+  })
+  it('isMacPlatform reads userAgentData, platform or userAgent', () => {
+    expect(isMacPlatform({ userAgentData: { platform: 'macOS' } } as any)).toBe(true)
+    expect(isMacPlatform({ platform: 'MacIntel' } as any)).toBe(true)
+    expect(isMacPlatform({ platform: '', userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0)' } as any)).toBe(true)
+    expect(isMacPlatform({ platform: 'Win32', userAgent: 'Windows' } as any)).toBe(false)
+    expect(isMacPlatform({ platform: 'Linux x86_64', userAgent: 'X11' } as any)).toBe(false)
+  })
+})
+
+describe('bubble polish', () => {
+  it('Send is enabled only with text and sends it', async () => {
+    pick(badge())
+    const field = $('.bubble textarea') as HTMLTextAreaElement
+    const send = button('Send')!
+    expect(send.disabled).toBe(true)
+    field.value = 'Make it green'
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(send.disabled).toBe(false)
+    send.click()
+    await vi.waitFor(() => expect(instructionCalls()).toHaveLength(1))
+    expect(instructionCalls()[0].body.items[0].instruction).toBe('Make it green')
+  })
+  it('the close button closes the bubble but keeps picking on', () => {
+    pick(badge())
+    button('Close (Esc)')!.click()
+    expect($('.bubble')).toBeNull()
+    expect(toggleOn()).toBeTruthy()
+  })
+  it('a failed send shows the English error inside the bubble', async () => {
+    fetchMock.mockImplementationOnce(async () => new Response('{}', { status: 500 }))
+    pick(badge())
+    button('Delete')!.click()
+    await vi.waitFor(() => expect($('.bubble .err')!.hidden).toBe(false))
+    expect($('.bubble .err')!.textContent).toBe('Couldn’t send. Is the proxy running?')
   })
 })

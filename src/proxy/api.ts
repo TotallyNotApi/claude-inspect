@@ -9,7 +9,7 @@ const PREFIX = '/__web-inspect'
 const MAX_BODY = 1024 * 1024
 const KEEPALIVE_MS = 15_000
 const STATUSES: InstructionStatus[] = ['queued', 'sent', 'running', 'done', 'aborted', 'held']
-const ORPHANED_LABEL = 'Přerušeno – instrukce nedokončena'
+const ORPHANED_LABEL = 'Interrupted. The instruction didn’t finish'
 const KINDS = ['tool', 'waiting-permission', 'turn-done', 'turn-aborted', 'info']
 
 export type ApiOptions = {

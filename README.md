@@ -22,10 +22,10 @@ Požadavky: Claude Code ≥ 2.1.287 (mody; testováno na **2.1.318**), Node ≥ 
 
 1. Spusť dev server (např. `npm run dev` na portu 5173) a v Claude Code napiš `/inspect 5173`.
 2. Otevři adresu proxy (výchozí `http://localhost:4000`, při obsazení další volný port). Proxy předává vše na dev server a přidá overlay.
-3. **Alt+C** zapne a vypne výběr elementů, **Esc** výběr zruší. Najetím se zobrazí rámeček a štítek (značka · komponenta), kliknutím se otevře bublina.
-4. Bublina: `✏️ Upravit`, `🗑 Smazat`, `✨ Vylepšit`, `＋ Do dávky` nebo vlastní instrukce (Enter pošle hned).
-5. Dávka: `＋ Do dávky` označí element číslem. Pilulka `Dávka (N) · Odeslat` pošle všechny najednou jako jednu zprávu.
-6. Pilulka vpravo dole ukazuje průběh (`Claude: upravuje …`, `Čeká na schválení v terminálu`, `Hotovo`, `Přerušeno`, u přerušené instrukce `Poslat znovu`).
+3. **⌘C** na macOS (jen když není označený text, jinak normálně kopíruje; funguje i ⌥C), **Alt+C** jinde: zapne a vypne výběr elementů. **Esc** výběr zruší. Najetím se zobrazí rámeček a štítek (značka · komponenta), kliknutím se otevře bublina.
+4. Bublina (UI je v angličtině): nahoře název elementu, pod ním textové pole na instrukci (Enter pošle, Shift+Enter nový řádek) a ikonky s tooltipy: Edit, Delete (pošle hned), Improve, Add to batch a tlačítko Send.
+5. Dávka: Add to batch označí element číslem. Pilulka `Batch (N) · Send` pošle všechny najednou jako jednu zprávu.
+6. Pilulka vpravo dole ukazuje průběh (`Claude: editing …`, `Waiting for approval in the terminal`, `Done`, `Interrupted`, u přerušené instrukce `Send again`).
 7. Když proxy přestane odpovídat (spadla, byla zabita), mod to do pár sekund pozná: stavový řádek ukáže `inspect: proxy spadla – /inspect <port>` a `/inspect` hlásí `proxy neběží`.
 8. `/inspect stop` proxy ukončí. Když Claude Code skončí bez stopu, proxy zanikne sama cca 15 s po posledním heartbeatu (hned po startu má 30 s na první heartbeat).
 

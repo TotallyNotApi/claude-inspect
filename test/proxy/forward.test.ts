@@ -148,7 +148,7 @@ describe('proxy forwarding', () => {
     const r = await get(port, '/')
     expect(r.status).toBe(502)
     expect(r.headers['content-type']).toContain('text/html')
-    expect(r.body.toString()).toContain(`web-inspect: dev server na portu ${deadPort} neodpovídá`)
+    expect(r.body.toString()).toContain(`web-inspect: the dev server on port ${deadPort} isn’t responding`)
   })
 
   it('does not forward requests handled by handleOwn', async () => {

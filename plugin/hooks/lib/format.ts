@@ -2,8 +2,8 @@ import type { ElementContext, Instruction } from './types.ts'
 
 export function quickActionText(action: 'delete' | 'improve'): string {
   return action === 'delete'
-    ? 'Smaž tento element.'
-    : 'Vylepši tento element (vzhled, texty, přístupnost) v duchu zbytku stránky.'
+    ? 'Delete this element.'
+    : 'Improve this element (visuals, copy, accessibility) in the style of the rest of the page.'
 }
 
 function tagLine(el: ElementContext): string {
@@ -19,14 +19,14 @@ function tagLine(el: ElementContext): string {
 
 function elementLines(el: ElementContext): string[] {
   const lines = [`- text: ${JSON.stringify(el.text)}`, `- tag: ${tagLine(el)}`]
-  if (el.sectionHeading) lines.push(`- sekce: ${JSON.stringify(el.sectionHeading)}`)
+  if (el.sectionHeading) lines.push(`- section: ${JSON.stringify(el.sectionHeading)}`)
   const src = el.source ? `${el.source.file}:${el.source.line}` : ''
   if (el.components.length > 0) {
-    lines.push(`- komponenta: ${el.components.join(' ← ')}${src ? ` (${src})` : ''}`)
+    lines.push(`- component: ${el.components.join(' ← ')}${src ? ` (${src})` : ''}`)
   } else if (src) {
-    lines.push(`- zdroj: ${src}`)
+    lines.push(`- source: ${src}`)
   }
-  lines.push(`- HTML cesta: ${el.domPath}`, `- selektor: ${el.selector}`, `- html: ${el.outerHTML}`)
+  lines.push(`- DOM path: ${el.domPath}`, `- selector: ${el.selector}`, `- html: ${el.outerHTML}`)
   return lines
 }
 
@@ -39,7 +39,7 @@ export function formatInstruction(i: Instruction): string {
   if (i.items.length === 1) {
     const it = i.items[0]
     return [
-      `[web-inspect] Instrukce z prohlížeče, stránka ${path}`,
+      `[web-inspect] Instruction from the browser, page ${path}`,
       '',
       it.instruction,
       '',
@@ -48,5 +48,5 @@ export function formatInstruction(i: Instruction): string {
     ].join('\n')
   }
   const blocks = i.items.map((it, n) => [`${n + 1}) ${it.instruction}`, ...elementLines(it.element)].join('\n'))
-  return [`[web-inspect] Dávka ${i.items.length} úprav z prohlížeče, stránka ${path}`, '', blocks.join('\n\n')].join('\n')
+  return [`[web-inspect] Batch of ${i.items.length} changes from the browser, page ${path}`, '', blocks.join('\n\n')].join('\n')
 }

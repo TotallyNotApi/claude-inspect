@@ -7,12 +7,12 @@ export type Summary = { text: string; tone: Tone }
 
 const ACTIVE = new Set(['sent', 'running'])
 const STATUS_TEXT: Record<QueueEntry['status'], string> = {
-  queued: 've frontě',
-  sent: 'odesláno',
-  running: 'běží',
-  done: 'hotovo',
-  aborted: 'přerušeno',
-  held: 'pozdrženo',
+  queued: 'queued',
+  sent: 'sent',
+  running: 'running',
+  done: 'done',
+  aborted: 'interrupted',
+  held: 'on hold',
 }
 const KIND_MARK: Record<ProgressEvent['kind'], string> = {
   tool: '·',
@@ -21,9 +21,9 @@ const KIND_MARK: Record<ProgressEvent['kind'], string> = {
   'turn-aborted': '✕',
   info: 'ℹ',
 }
-export const OFFLINE_TEXT = 'web-inspect: proxy neběží'
-export const CONTINUE_HINT = 'Pokračuj zprávou v terminálu'
-export const QUEUED_PAUSED_TEXT = 'Ve frontě – pokračuj zprávou v terminálu'
+export const OFFLINE_TEXT = 'web-inspect: proxy isn’t running'
+export const CONTINUE_HINT = 'Send a message in the terminal to continue'
+export const QUEUED_PAUSED_TEXT = 'Queued. Send a message in the terminal to continue'
 const TERMINAL = new Set<ProgressEvent['kind']>(['turn-done', 'turn-aborted', 'info'])
 
 /** The mod is paused (after Esc, or holding a dropped submit) and waits for the user's input. */
@@ -39,14 +39,14 @@ export function summarize(s: Snapshot): Summary | null {
   // The latest one: an older orphan left sent/running must not freeze the pill.
   const active = [...s.queue].reverse().find((q) => ACTIVE.has(q.status))
   if (active) {
-    if (last?.kind === 'waiting-permission') return { text: 'Čeká na schválení v terminálu', tone: 'wait' }
+    if (last?.kind === 'waiting-permission') return { text: 'Waiting for approval in the terminal', tone: 'wait' }
     const tool = [...s.progress].reverse().find((p) => p.kind === 'tool' && p.instructionId === active.id)
-    return { text: `Claude: ${tool ? tool.label : 'pracuje'}…`, tone: 'live' }
+    return { text: `Claude: ${tool ? tool.label : 'working'}…`, tone: 'live' }
   }
   const queued = s.queue.filter((q) => q.status === 'queued').length
-  if (queued > 0) return modPaused(s) ? { text: QUEUED_PAUSED_TEXT, tone: 'wait' } : { text: `Ve frontě: ${queued}`, tone: 'wait' }
+  if (queued > 0) return modPaused(s) ? { text: QUEUED_PAUSED_TEXT, tone: 'wait' } : { text: `Queued: ${queued}`, tone: 'wait' }
   const finished = [...s.queue].reverse().find((q) => q.status === 'done' || q.status === 'aborted' || q.status === 'held')
-  if (finished) return finished.status === 'done' ? { text: 'Hotovo', tone: 'ok' } : { text: 'Přerušeno', tone: 'idle' }
+  if (finished) return finished.status === 'done' ? { text: 'Done', tone: 'ok' } : { text: 'Interrupted', tone: 'idle' }
   if (last) return { text: last.label, tone: 'idle' }
   return null
 }
@@ -82,7 +82,7 @@ export function createPill(opts: { win: Window; doc: Document; dock: HTMLElement
     const head = el('button', 'pill-head')
     head.type = 'button'
     head.setAttribute('aria-expanded', String(expanded))
-    head.title = expanded ? 'Sbalit' : 'Rozbalit průběh'
+    head.title = expanded ? 'Collapse' : 'Show progress'
     const dot = el('span', `dot ${sum.tone === 'live' || sum.tone === 'wait' ? 'live' : sum.tone === 'ok' ? 'ok' : 'idle'}`)
     head.append(dot, el('span', 'pill-line', sum.text))
     head.addEventListener('click', () => {
@@ -99,16 +99,16 @@ export function createPill(opts: { win: Window; doc: Document; dock: HTMLElement
     const log = el('div', 'log')
     const events = s.progress.slice(-8)
     if (events.length) {
-      log.append(el('div', 'h', 'Průběh'))
+      log.append(el('div', 'h', 'Progress'))
       for (const p of events) log.append(el('div', 'ev', `${KIND_MARK[p.kind] ?? '·'} ${p.label}`))
     }
     if (s.queue.length) {
-      log.append(el('div', 'h', 'Fronta'))
+      log.append(el('div', 'h', 'Queue'))
       for (const q of s.queue) {
         const row = el('div', 'q')
         row.append(el('span', 's', STATUS_TEXT[q.status] ?? q.status), el('span', 'sum', q.summary))
         if (q.status === 'aborted') {
-          const b = el('button', 'resend', 'Poslat znovu')
+          const b = el('button', 'resend', 'Send again')
           b.type = 'button'
           b.addEventListener('click', async () => {
             b.disabled = true
