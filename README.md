@@ -4,17 +4,44 @@ Mod pro Claude Code, lokální Node proxy a overlay v prohlížeči. Klikneš na
 
 ## Instalace
 
+Plugin se instaluje přes marketplace, takže je pak k dispozici v každé session Claude Code, v jakémkoli projektu.
+
+**Z lokální složky** (stačí jednou):
+
 ```
-claude --plugin-dir <cesta>/claude-inspect/plugin
+claude plugin marketplace add /Users/ondrejkonarik/Projects/claude-inspect
+claude plugin install web-inspect@web-inspect --scope user
 ```
 
-Pro trvalé načítání přidej do `~/.claude/settings.json`:
+Totéž jde i uvnitř Claude Code: `/plugin marketplace add <cesta ke claude-inspect>` a pak `/plugin install web-inspect@web-inspect`. Běžící session načte plugin až po restartu.
 
-```json
-{ "env": { "CLAUDE_CODE_PLUGIN_DIRS": "<cesta>/claude-inspect/plugin" } }
+**Z GitHubu** (až bude repo nahrané, třeba jako `<owner>/claude-inspect`):
+
+```
+/plugin install web-inspect --marketplace <owner>/claude-inspect
 ```
 
-`CLAUDE_CODE_PLUGIN_DIRS` načte adresáře pluginů stejně jako `--plugin-dir` (absolutní cesty oddělené `:`; jako proměnná prostředí nebo v `env` v `~/.claude/settings.json`), viz [Settings and environment variables](https://code.claude.com/docs/en/plugins/mods/reference.md#settings-and-environment-variables).
+nebo ve dvou krocích `claude plugin marketplace add <owner>/claude-inspect` a `claude plugin install web-inspect@web-inspect`.
+
+**Ověření:** v libovolné session napiš `/inspect`. Má odpovědět `web-inspect: inactive. Use /inspect <dev server port>`.
+
+**Aktualizace po změně kódu:** instalace je kopie v `~/.claude/plugins/cache`, změny v repu se samy nepropíšou. Po `npm run build` zvyš `version` v `plugin/.claude-plugin/plugin.json` a spusť:
+
+```
+claude plugin marketplace update web-inspect
+claude plugin update web-inspect@web-inspect
+```
+
+Pak restartuj Claude Code.
+
+**Odinstalace:**
+
+```
+claude plugin uninstall web-inspect@web-inspect
+claude plugin marketplace remove web-inspect
+```
+
+**Bez instalace** (vývoj, jednorázové vyzkoušení): `claude --plugin-dir <cesta>/claude-inspect/plugin` načte plugin přímo z repa, bez kopírování. Při vývoji je lepší nainstalovanou verzi vypnout (`claude plugin disable web-inspect@web-inspect`), ať neběží dvě verze najednou.
 
 Požadavky: Claude Code ≥ 2.1.287 (mody; testováno na **2.1.318**), Node ≥ 20. Plugin je zbuildovaný, instalace nic nestahuje.
 

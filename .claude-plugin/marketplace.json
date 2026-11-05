@@ -1,0 +1,12 @@
+{
+  "name": "web-inspect",
+  "description": "Pick elements on your dev site in the browser and send instructions to your running Claude Code session.",
+  "owner": { "name": "Ondřej Konařík" },
+  "plugins": [
+    {
+      "name": "web-inspect",
+      "source": "./plugin",
+      "description": "Pick elements on your dev site in the browser and send instructions to your running Claude Code session."
+    }
+  ]
+}
