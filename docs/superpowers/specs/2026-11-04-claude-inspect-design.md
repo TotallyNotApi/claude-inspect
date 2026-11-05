@@ -114,7 +114,7 @@ Přesný formát zprávy je na builderovi. Musí být kompaktní, aby nezahlcova
 - Do kontextu patří i HTML cesta elementu.
 - Frameworky: Next.js, Vite + React.
 - Zatím jen pro uživatele, možná později zveřejnit.
-- Umístění: `/Users/ondrejkonarik/Projects/claude-inspect`, název `claude-inspect`.
+- Umístění: `<cesta>/claude-inspect`, název `claude-inspect`.
 - Redirecty na absolutní URL dev serveru: v v1 jen známé omezení.
 
 ## Navrženo mnou (Claude), uživatel nijak nerozporoval

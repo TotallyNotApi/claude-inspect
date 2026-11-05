@@ -9,19 +9,19 @@ Plugin se instaluje přes marketplace, takže je pak k dispozici v každé sessi
 **Z lokální složky** (stačí jednou):
 
 ```
-claude plugin marketplace add /Users/ondrejkonarik/Projects/claude-inspect
+claude plugin marketplace add <cesta>/claude-inspect
 claude plugin install web-inspect@web-inspect --scope user
 ```
 
 Totéž jde i uvnitř Claude Code: `/plugin marketplace add <cesta ke claude-inspect>` a pak `/plugin install web-inspect@web-inspect`. Běžící session načte plugin až po restartu.
 
-**Z GitHubu** (až bude repo nahrané, třeba jako `<owner>/claude-inspect`):
+**Z GitHubu:**
 
 ```
-/plugin install web-inspect --marketplace <owner>/claude-inspect
+/plugin install web-inspect --marketplace TotallyNotApi/claude-inspect
 ```
 
-nebo ve dvou krocích `claude plugin marketplace add <owner>/claude-inspect` a `claude plugin install web-inspect@web-inspect`.
+nebo ve dvou krocích `claude plugin marketplace add TotallyNotApi/claude-inspect` a `claude plugin install web-inspect@web-inspect`.
 
 **Ověření:** v libovolné session napiš `/inspect`. Má odpovědět `web-inspect: inactive. Use /inspect <dev server port>`.
 
